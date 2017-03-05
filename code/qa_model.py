@@ -45,7 +45,15 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
-
+        # Forward direction cell
+        lstm_fw_cell = rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        # Backward direction cell
+        lstm_bw_cell = rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        # Get lstm cell output
+        (fw_h, bw_h), _ = tf.nn.bidirectional_dynamic_rnn( \
+            lstm_fw_cell, lstm_bw_cell, inputs=inputs, dtype=tf.float32)
+        # Concatinate 2 vectors as context representation.
+        h = tf.concat(2, [fw_h, bw_h])
         return
 
 
@@ -65,8 +73,10 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
+        lstm_cell = rnn.BasicLSTMCell(self.output_size, state_is_tuple=True)
+        (output, _) = tf.nn.dynamic_rnn(lstm_cell, lstm_bw_cell, inputs=knowledge_rep, dtype=tf.float32)
 
-        return
+        return output
 
 class QASystem(object):
     def __init__(self, encoder, decoder, *args):
@@ -79,6 +89,10 @@ class QASystem(object):
         """
 
         # ==== set up placeholder tokens ========
+        self.question_inputs = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
+        self.question_masks = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
+        self.context_inputs = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
+        self.context_masks = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
 
 
         # ==== assemble pieces ====
