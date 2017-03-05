@@ -46,9 +46,9 @@ class Encoder(object):
                  or both.
         """
         # Forward direction cell
-        lstm_fw_cell = rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        lstm_fw_cell = tf.rnn.BasicLSTMCell(self.size, state_is_tuple=True)
         # Backward direction cell
-        lstm_bw_cell = rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        lstm_bw_cell = tf.rnn.BasicLSTMCell(self.size, state_is_tuple=True)
         # Get lstm cell output
         (fw_h, bw_h), _ = tf.nn.bidirectional_dynamic_rnn( \
             lstm_fw_cell, lstm_bw_cell, inputs=inputs, dtype=tf.float32)
@@ -73,13 +73,13 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
-        lstm_cell = rnn.BasicLSTMCell(self.output_size, state_is_tuple=True)
-        (output, _) = tf.nn.dynamic_rnn(lstm_cell, lstm_bw_cell, inputs=knowledge_rep, dtype=tf.float32)
+        lstm_cell = tf.rnn.BasicLSTMCell(self.output_size, state_is_tuple=True)
+        (output, _) = tf.nn.dynamic_rnn(lstm_cell, lstm_cell, inputs=knowledge_rep, dtype=tf.float32)
 
         return output
 
 class QASystem(object):
-    def __init__(self, encoder, decoder, *args):
+    def __init__(self, encoder, decoder, pretrained_embeddings, config):
         """
         Initializes your System
 
@@ -87,6 +87,8 @@ class QASystem(object):
         :param decoder: a decoder that you constructed in train.py
         :param args: pass in more arguments as needed
         """
+        self.pretrained_embeddings = pretrained_embeddings
+        self.config = config
 
         # ==== set up placeholder tokens ========
         self.question_inputs = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
@@ -129,7 +131,13 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("embeddings"):
-            pass
+            pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
+            question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_inputs)
+            question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size])
+            context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_inputs)
+            context_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size])
+
+        return question_embeddings, context_embeddings
 
     def optimize(self, session, train_x, train_y):
         """
