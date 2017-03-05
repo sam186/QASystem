@@ -10,6 +10,8 @@ import tensorflow as tf
 from qa_model import Encoder, QASystem, Decoder
 from os.path import join as pjoin
 
+from utils.data_reader import read_data
+
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +33,11 @@ tf.app.flags.DEFINE_integer("print_every", 1, "How many iterations to do per pri
 tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicates keep all.")
 tf.app.flags.DEFINE_string("vocab_path", "data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{embedding_size}.npz)")
+
+
+tf.app.flags.DEFINE_string("question_maxlen", 30, "Max length of question (default: 30")
+tf.app.flags.DEFINE_string("context_maxlen", 400, "Max length of the context (default: 400)")
+
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -79,7 +86,8 @@ def get_normalized_train_dir(train_dir):
 def main(_):
 
     # Do what you need to load datasets from FLAGS.data_dir
-    dataset = None
+    embeddings, train_questions, train_context, train_answer_span = read_data(FLAGS.data_dir, FLAGS.embedding_size)
+    dataset = (embeddings, train_questions, train_context, train_answer_span)
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
@@ -88,7 +96,7 @@ def main(_):
     encoder = Encoder(size=FLAGS.state_size, vocab_dim=FLAGS.embedding_size)
     decoder = Decoder(output_size=FLAGS.output_size)
 
-    qa = QASystem(encoder, decoder)
+    qa = QASystem(encoder, deocder, FLAGS)
 
     if not os.path.exists(FLAGS.log_dir):
         os.makedirs(FLAGS.log_dir)
