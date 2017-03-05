@@ -86,17 +86,17 @@ def get_normalized_train_dir(train_dir):
 def main(_):
 
     # Do what you need to load datasets from FLAGS.data_dir
+
     embeddings, train_questions, train_context, train_answer_span = read_data(FLAGS.data_dir, FLAGS.embedding_size)
     dataset = (embeddings, train_questions, train_context, train_answer_span)
 
-    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
 
     encoder = Encoder(size=FLAGS.state_size, vocab_dim=FLAGS.embedding_size)
     decoder = Decoder(output_size=FLAGS.output_size)
 
-    qa = QASystem(encoder, deocder, FLAGS)
+    qa = QASystem(encoder, decoder, embeddings, FLAGS)
 
     if not os.path.exists(FLAGS.log_dir):
         os.makedirs(FLAGS.log_dir)
