@@ -30,7 +30,7 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, masks, encoder_state_input):
+    def encode(self, inputs, masks, encoder_state_input=None): # where to use encoder_state_input(optional), where to set weights
         """
         In a generalized encode function, you pass in your inputs,
         masks, and an initial
@@ -99,22 +99,44 @@ class QASystem(object):
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
-            self.setup_embeddings()
-            self.setup_system()
-            self.setup_loss()
+            self.x, self.q = self.setup_embeddings()
+            self.pred = self.setup_system(self.x, self.q)
+            self.loss = self.setup_loss(self.pred)
 
         # ==== set up training/updating procedure ====
+        # ?train_op = e.g. tf.train.AdamOptimizer(self.config.lr).minimize(loss)
         pass
 
 
-    def setup_system(self):
+    def setup_system(self, x, q):
         """
         After your modularized implementation of encoder and decoder
         you should call various functions inside encoder, decoder here
         to assemble your reading comprehension system!
         :return:
         """
+        # Step 1: encode x and q, respectively, with independent weights
+        #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
+        #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+
+        # Step 2: combine H and U using "Attention"
+        #         e.g. S = H.T * U
+        #              a_x = softmax(S)
+        #              a_q = softmax(S.T)
+        #              U_hat = sum(a_x*U)
+        #              H_hat = sum(a_q*H)
+
+
+        # Step 3: further encode
+        #         e.g. G = f(H, U, H_hat, U_hat)
+
+        # Step 4: decode
+        #         e.g. pred_start = decode_start(G)
+        #         e.g. pred_end = decode_end(G)
+
         raise NotImplementedError("Connect all parts of your system here!")
+
+        # retunr (pred_start, pred_end)
 
 
     def setup_loss(self):
@@ -137,7 +159,7 @@ class QASystem(object):
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_inputs)
             context_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size])
 
-        return question_embeddings, context_embeddings
+        return （context_embeddings, question_embeddings）
 
     def optimize(self, session, train_x, train_y):
         """
@@ -150,7 +172,7 @@ class QASystem(object):
         # fill in this feed_dictionary like:
         # input_feed['train_x'] = train_x
 
-        output_feed = []
+        output_feed = [] #[self.train_op, self.loss]
 
         outputs = session.run(output_feed, input_feed)
 
