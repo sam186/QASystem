@@ -14,6 +14,16 @@ def load_glove_embeddings(embed_path):
     logger.info("Vocabulary: {}" .format(glove.shape[0]))
     return glove
 
+def add_paddings(sentence, n_features, max_length):
+    zero_vector = [0] * n_features
+    mask = [True] * len(sentence)
+    pad_len = max_length - len(sentence)
+    if pad_len > 0:
+        padded_sentence = sentence + [zero_vector] * pad_len
+        mask += [False] * pad_len
+    else:
+        padded_sentence = sentence[:max_length]
+    return padded_sentence, mask
 
 class Config(object):
     def __init__(self, data_dir):
@@ -26,11 +36,12 @@ class Config(object):
         self.val_question_file = pjoin(data_dir, 'val.ids.question')
         self.val_context_file = pjoin(data_dir, 'val.ids.context')
 
+def pad_dataset(data, n_features, max_length)
 
 def strip(x):
     return map(int, x.strip().split(" "))
 
-def read_data(data_dir, debug=True):
+def read_data(data_dir, max_question_length=None, max_context_length=None, debug=True):
     config = Config(data_dir)
 
     if debug:
@@ -44,7 +55,6 @@ def read_data(data_dir, debug=True):
     with gfile.GFile(config.train_question_file, mode="rb") as q_file, \
          gfile.GFile(config.train_context_file, mode="rb") as c_file, \
          gfile.GFile(config.train_answer_span_file, mode="rb") as a_file:
-
             for (q, c, a) in zip(q_file, c_file, a_file):
                 question = strip(q)
                 context = strip(c)
@@ -76,7 +86,11 @@ def read_data(data_dir, debug=True):
     logger.info("Max question length %d" % max_q_len)
     logger.info("Max context length %d" % max_c_len)
 
+
+
     return {"training": train, "validation": val}
+
+
 
 
 def get_minibatches(data, minibatch_size, shuffle=True):
