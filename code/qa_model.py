@@ -30,15 +30,13 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, masks, encoder_state_input=None): # where to use encoder_state_input(optional), where to set weights
+    def encode(self, inputs, sequence_length, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
-        masks, and an initial
-        hidden state input into this function.
+        sequence_length, and an initial hidden state input into this function.
 
-        :param inputs: Symbolic representations of your input
-        :param masks: this is to make sure tf.nn.dynamic_rnn doesn't iterate
-                      through masked steps
+        :param inputs: Symbolic representations of your input (padded all to the same length)
+        :param sequence_length: Length of the sequence
         :param encoder_state_input: (Optional) pass this as initial hidden state
                                     to tf.nn.dynamic_rnn to build conditional representations
         :return: an encoded representation of your input.
@@ -46,15 +44,31 @@ class Encoder(object):
                  or both.
         """
         # Forward direction cell
-        lstm_fw_cell = tf.rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
         # Backward direction cell
-        lstm_bw_cell = tf.rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
+
+        initial_state_fw = None
+        initial_state_bw = None
+        if encoder_state_input is not None:
+            initial_state_fw, initial_state_bw = encoder_state_input
+
+
         # Get lstm cell output
-        (fw_h, bw_h), _ = tf.nn.bidirectional_dynamic_rnn( \
-            lstm_fw_cell, lstm_bw_cell, inputs=inputs, dtype=tf.float32)
-        # Concatinate 2 vectors as context representation.
-        h = tf.concat(2, [fw_h, bw_h])
-        return
+        outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
+                                                      cell_bw=lstm_bw_cell,\
+                                                      inputs=inputs,\
+                                                      sequence_length=sequence_length,
+                                                      initial_state_fw=initial_state_fw,\
+                                                      initial_state_bw=initial_state_bw,
+                                                      dtype=tf.float64)
+
+        # Concatinate forward and backword hidden output vectors.
+        # each vector is of size [batch_size, sequence_length, cell_state_size]
+        hidden_state = tf.concat(2, outputs)
+        (final_state_fw, final_state_bw) = final_output_states
+        concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
+        return hidden_state, concat_final_state, final_output_states
 
 
 class Decoder(object):
@@ -88,6 +102,8 @@ class QASystem(object):
         :param args: pass in more arguments as needed
         """
         self.pretrained_embeddings = pretrained_embeddings
+        self.encoder = encoder
+        self.decoder = decoder
         self.config = config
 
         # ==== set up placeholder tokens ========
