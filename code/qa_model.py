@@ -127,7 +127,7 @@ class QASystem(object):
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
-            self.setup_embeddings()
+            # self.setup_embeddings()
             self.setup_system()
             self.setup_loss()
 
