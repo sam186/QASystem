@@ -7,6 +7,17 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
+class Config(object):
+    def __init__(self, data_dir):
+        # self.train_answer_file = pjoin(data_dir, 'train.answer')
+        self.train_answer_span_file = pjoin(data_dir, 'train.span')
+        self.train_question_file = pjoin(data_dir, 'train.ids.question')
+        self.train_context_file = pjoin(data_dir, 'train.ids.context')
+        # self.val_answer_file = pjoin(data_dir, 'val.answer')
+        self.val_answer_span_file = pjoin(data_dir, 'val.span')
+        self.val_question_file = pjoin(data_dir, 'val.ids.question')
+        self.val_context_file = pjoin(data_dir, 'val.ids.context')
+
 def load_glove_embeddings(embed_path):
     logger.info("Loading glove embedding...")
     glove = np.load(embed_path)['glove']
@@ -25,23 +36,27 @@ def add_paddings(sentence, n_features, max_length):
         padded_sentence = sentence[:max_length]
     return padded_sentence, mask
 
-class Config(object):
-    def __init__(self, data_dir):
-        # self.train_answer_file = pjoin(data_dir, 'train.answer')
-        self.train_answer_span_file = pjoin(data_dir, 'train.span')
-        self.train_question_file = pjoin(data_dir, 'train.ids.question')
-        self.train_context_file = pjoin(data_dir, 'train.ids.context')
-        # self.val_answer_file = pjoin(data_dir, 'val.answer')
-        self.val_answer_span_file = pjoin(data_dir, 'val.span')
-        self.val_question_file = pjoin(data_dir, 'val.ids.question')
-        self.val_context_file = pjoin(data_dir, 'val.ids.context')
+def featurize_paragraph(self, paragraph, paragraph_length):
+    # TODO: Split by sentence instead of word
+    sentences = [[word] for word in paragraph]
+    return sentences
 
-def pad_dataset(data, n_features, max_length)
+def preprocess_dataset(dataset, question_maxlen, context_maxlen):
+    processed = []
+    for q, q_len, c, c_len, ans in dataset:
+        q_sentences = featurize_paragraph(q, q_len)
+        c_sentences = featurize_paragraph(c, c_len)
+
+        # add padding:
+        q_sentences = add_paddings(q_sentences, question_maxlen)
+        c_sentences = add_paddings(c_sentences, context_maxlen)
+        processed.append([q_sentences, q_len, c_sentences, c_len, ans])
+    return processed
 
 def strip(x):
     return map(int, x.strip().split(" "))
 
-def read_data(data_dir, max_question_length=None, max_context_length=None, debug=True):
+def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
     config = Config(data_dir)
 
     if debug:
@@ -86,7 +101,13 @@ def read_data(data_dir, max_question_length=None, max_context_length=None, debug
     logger.info("Max question length %d" % max_q_len)
     logger.info("Max context length %d" % max_c_len)
 
+    if question_maxlen is None:
+        question_maxlen = max_q_len
+    if context_maxlen is None:
+        context_maxlen = max_c_len
 
+    train = preprocess_dataset(train, question_maxlen, context_maxlen)
+    val = preprocess_dataset(val, question_maxlen, context_maxlen)
 
     return {"training": train, "validation": val}
 
