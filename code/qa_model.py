@@ -9,6 +9,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
+from utils import minibatches
 
 from evaluate import exact_match_score, f1_score
 
@@ -24,6 +25,16 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
+
+class Attention(object):
+    def __init__(self):
+        pass
+
+    def calculate(self, context_state, question_state):
+        # compare the question representation with all the context hidden states.
+        attention = tf.nn.softmax(tf.matmul(context_state, tf.expand_dims(question_state, -1)))
+        context_attention_state = context_state * attention
+        return context_attention_state
 
 class Encoder(object):
     def __init__(self, size, vocab_dim):
@@ -66,6 +77,7 @@ class Encoder(object):
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
         hidden_state = tf.concat(2, outputs)
+        # final_state_fw and final_state_bw are the final states of the forwards/backwards LSTM
         (final_state_fw, final_state_bw) = final_output_states
         concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
         return hidden_state, concat_final_state, final_output_states
@@ -121,15 +133,6 @@ class QASystem(object):
 
         # ==== set up training/updating procedure ====
         pass
-
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
-        feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_length_placeholder] = question_length_batch
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_length_placeholder] = context_length_batch
-        if labels_batch is not None:
-            feed_dict[self.labels_placeholder] = labels_batch
 
     def setup_system(self):
         """
@@ -267,6 +270,33 @@ class QASystem(object):
 
         return f1, em
 
+    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
+        feed_dict = {}
+        feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.question_length_placeholder] = question_length_batch
+        feed_dict[self.context_placeholder] = context_batch
+        feed_dict[self.context_length_placeholder] = context_length_batch
+        if labels_batch is not None:
+            feed_dict[self.labels_placeholder] = labels_batch
+
+    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch):
+        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=labels_batch)
+        loss = 0.00
+        # TODO: set up loss
+        # _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
+        return loss
+
+    def run_epoch(self, session, training_set, validation_set):
+        for i in batch in enumerate(minibatches(training_set, self.config.batch_size)):
+            loss = self.train_on_batch(sess, *batch)
+
+        # TODO: Evaluate on training set
+        f1, em = evaluate_answer(session, training_set)
+        # TODO: Evaluate on validation set
+        f1, em = evaluate_answer(session, validation_set)
+        return 0
+
+
     def train(self, session, dataset, train_dir):
         """
         Implement main training loop
@@ -302,3 +332,16 @@ class QASystem(object):
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
+
+        training_set = dataset['training']
+        validation_set = dataset['validation']
+
+        best_score = 0
+        for epoch in range(self.config.epochs):
+            logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
+            score = self.run_epoch(session, training_set, validation_set)
+
+            # Saving the model
+            # saver = tf.train.Saver()
+            # saver.save(session, train_dir)
+
