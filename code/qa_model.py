@@ -30,10 +30,25 @@ class Attention(object):
     def __init__(self):
         pass
 
-    def calculate(self, context_state, question_state):
+    def calculate(self, h, u):
         # compare the question representation with all the context hidden states.
-        attention = tf.nn.softmax(tf.matmul(context_state, tf.expand_dims(question_state, -1)))
-        context_attention_state = context_state * attention
+        #         e.g. S = h.T * u
+        #              a_x = softmax(S)
+        #              a_q = softmax(S.T)
+        #              U_hat = sum(a_x*U)
+        #              H_hat = sum(a_q*H)
+        """
+        :param h: [N, JX, d_en]
+        :param u: [N, JQ, d_en]
+        :param h_mask:  [N, JX]
+        :param u_mask:  [N, JQ]
+        :param scope:
+
+        :return: [N, JX, d_com]
+        """
+
+        attention = tf.nn.softmax(tf.matmul(h, tf.expand_dims(u, -1)))
+        context_attention_state = h * attention
         return context_attention_state
 
 class Encoder(object):
@@ -116,6 +131,7 @@ class QASystem(object):
         self.pretrained_embeddings = pretrained_embeddings
         self.encoder = encoder
         self.decoder = decoder
+        self.attention = Attention()
         self.config = config
 
         # ==== set up placeholder tokens ========
@@ -201,6 +217,7 @@ class QASystem(object):
         """
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         d = tf.shape(self.x)[-1] # self.config.embedding_size * self.config.n_features
+        d_ans = config.answer_size
         # Args:
             #   self.x: [None, JX, d]
             #   self.q: [None, JQ, d]
@@ -208,13 +225,12 @@ class QASystem(object):
         assert self.q.get_shape().as_list() == [None, JQ, d] 
 
 
-        # Step 1: encode x and q, respectively, with independent weights
-        #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
-        #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
-
+        # Step 1: encode x and q, respectively
+        #         e.g. h = encode_context(x)   # get H (2d*T) as representation of x
+        #         e.g. u = encode_question(q)  # get U (2d*J) as representation of q
         d_en = d
-        assert H.get_shape().as_list() == [None, JX, d_en] 
-        assert U.get_shape().as_list() == [None, JQ, d_en] 
+        assert h.get_shape().as_list() == [None, JX, d_en] 
+        assert u.get_shape().as_list() == [None, JQ, d_en] 
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -222,21 +238,24 @@ class QASystem(object):
         #              a_q = softmax(S.T)
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
-
+        d_com = d
+        g0 = self.attention.calculate(h, u)
+        assert g0.get_shape().as_list() == [None, JX, d_com] 
 
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
-        # G = tf.concat(1, [H, U])
+        g1 = g0
+        d_en2 = d_com
+        assert g1.get_shape().as_list() == [None, JX, d_en2] 
         
-        d_com = d
-        assert G.get_shape().as_list() == [None, JX, d_com] 
 
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        preds = self.logistic_regression(G)
-
+        preds = self.logistic_regression(g1)
+        assert d_ans == 2
+        assert preds.get_shape().as_list() == [N, d_ans, JX]
 
         # raise NotImplementedError("Connect all parts of your system here!")
         return preds
