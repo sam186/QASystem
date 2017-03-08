@@ -30,15 +30,13 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, masks, encoder_state_input):
+    def encode(self, inputs, sequence_length, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
-        masks, and an initial
-        hidden state input into this function.
+        sequence_length, and an initial hidden state input into this function.
 
-        :param inputs: Symbolic representations of your input
-        :param masks: this is to make sure tf.nn.dynamic_rnn doesn't iterate
-                      through masked steps
+        :param inputs: Symbolic representations of your input (padded all to the same length)
+        :param sequence_length: Length of the sequence
         :param encoder_state_input: (Optional) pass this as initial hidden state
                                     to tf.nn.dynamic_rnn to build conditional representations
         :return: an encoded representation of your input.
@@ -49,12 +47,28 @@ class Encoder(object):
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
         # Backward direction cell
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
+
+        initial_state_fw = None
+        initial_state_bw = None
+        if encoder_state_input is not None:
+            initial_state_fw, initial_state_bw = encoder_state_input
+
+
         # Get lstm cell output
-        (fw_h, bw_h), _ = tf.nn.bidirectional_dynamic_rnn( \
-            lstm_fw_cell, lstm_bw_cell, inputs=inputs, dtype=tf.float32)
-        # Concatinate 2 vectors as context representation.
-        h = tf.concat(2, [fw_h, bw_h])
-        return
+        outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
+                                                      cell_bw=lstm_bw_cell,\
+                                                      inputs=inputs,\
+                                                      sequence_length=sequence_length,
+                                                      initial_state_fw=initial_state_fw,\
+                                                      initial_state_bw=initial_state_bw,
+                                                      dtype=tf.float64)
+
+        # Concatinate forward and backword hidden output vectors.
+        # each vector is of size [batch_size, sequence_length, cell_state_size]
+        hidden_state = tf.concat(2, outputs)
+        (final_state_fw, final_state_bw) = final_output_states
+        concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
+        return hidden_state, concat_final_state, final_output_states
 
 
 class Decoder(object):
@@ -88,14 +102,16 @@ class QASystem(object):
         :param args: pass in more arguments as needed
         """
         self.pretrained_embeddings = pretrained_embeddings
+        self.encoder = encoder
+        self.decoder = decoder
         self.config = config
 
         # ==== set up placeholder tokens ========
-        self.question_inputs = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
-        self.question_masks = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
-        self.context_inputs = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
-        self.context_masks = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
-
+        self.question_placeholder = tf.placeholder(tf.int32, shape=(None, config.question_maxlen, config.n_features))
+        self.question_length_placeholder = tf.placeholder(tf.int32, shape=(None,))
+        self.context_placeholder = tf.placeholder(tf.int32, shape=(None, config.context_maxlen, config.n_features))
+        self.context_length_placeholder = tf.placeholder(tf.int32, shape=(None,))
+        self.answer_placeholders = tf.placeholder(tf.int32, shape=(None, config.answer_size))
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
@@ -106,13 +122,12 @@ class QASystem(object):
         # ==== set up training/updating procedure ====
         pass
 
-    def create_feed_dict(self, 
-                         question_batch, 
-                         context_batch, 
-                         labels_batch=None):
+    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.question_length_placeholder] = question_length_batch
         feed_dict[self.context_placeholder] = context_batch
+        feed_dict[self.context_length_placeholder] = context_length_batch
         if labels_batch is not None:
             feed_dict[self.labels_placeholder] = labels_batch
 
@@ -141,10 +156,10 @@ class QASystem(object):
         """
         with vs.variable_scope("embeddings"):
             pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
-            question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_inputs)
-            question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size])
-            context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_inputs)
-            context_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size])
+            question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
+            question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
+            context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
+            context_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size * self.config.n_features])
 
         return question_embeddings, context_embeddings
 
