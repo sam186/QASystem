@@ -1,50 +1,82 @@
+import logging
 import numpy as np
 from os.path import join as pjoin
-import tflearn
-from tflearn.data_utils import to_categorical, pad_sequences
+from tensorflow.python.platform import gfile
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+def load_glove_embeddings(embed_path):
+    logger.info("Loading glove embedding...")
+    glove = np.load(embed_path)['glove']
+    logger.info("Dimension: {}".format(glove.shape[1]))
+    logger.info("Vocabulary: {}" .format(glove.shape[0]))
+    return glove
+
 
 class Config(object):
-    def __init__(self, data_dir, vocab_dim):
-        self.train_answer_file = pjoin(data_dir, 'train.answer')
+    def __init__(self, data_dir):
+        # self.train_answer_file = pjoin(data_dir, 'train.answer')
         self.train_answer_span_file = pjoin(data_dir, 'train.span')
         self.train_question_file = pjoin(data_dir, 'train.ids.question')
         self.train_context_file = pjoin(data_dir, 'train.ids.context')
-        self.embed_path = pjoin(data_dir, "glove.trimmed.{}.npz".format(vocab_dim))
-        self.question_maxlen = 30
-        self.context_maxlen = 400
+        # self.val_answer_file = pjoin(data_dir, 'val.answer')
+        self.val_answer_span_file = pjoin(data_dir, 'val.span')
+        self.val_question_file = pjoin(data_dir, 'val.ids.question')
+        self.val_context_file = pjoin(data_dir, 'val.ids.context')
 
-def read_data(data_dir, vocab_dim):
-    config = Config(data_dir, vocab_dim)
-    train_questions = []
-    with open(config.train_question_file) as f:
-        for line in f.readlines():
-            sp = line.strip().split(' ')
-            train_questions.append([int(n) for n in sp])
-    train_questions = pad_sequences(train_questions, maxlen=config.question_maxlen, value=0)
-    print "Finish loading %d train questions." % (len(train_questions))
-    train_context = []
-    with open(config.train_context_file) as f:
-        for line in f.readlines():
-            sp = line.strip().split(' ')
-            train_context.append([int(n) for n in sp])
-    assert len(train_questions) == len(train_context), r"ERROR: number of questions != number of contexts"
-    train_context = pad_sequences(train_context, maxlen=config.context_maxlen, value=0)
-    print "Finish loading %d train contexts." % (len(train_context)) 
 
-    train_answer_span = []
-    with open(config.train_answer_span_file) as f:
-        for line in f.readlines():
-            sp = line.strip().split(' ')
-            train_answer_span.append([int(n) for n in sp])
-    assert len(train_questions) == len(train_answer_span), r"ERROR: number of questions != number of answers"
-    print "Finish loading %d train answers." % (len(train_answer_span)) 
+def strip(x):
+    return map(int, x.strip().split(" "))
 
-    glove_embedding = []
-    with np.load(config.embed_path) as embeddings:
-        glove_embedding = embeddings['glove']
-    print "Finish loading Embeddings."
+def read_data(data_dir, debug=True):
+    config = Config(data_dir)
 
-    return glove_embedding, train_questions, train_context, train_answer_span
+    if debug:
+        debug_train_samples = 20
+        debug_val_samples = 10
+
+    train = []
+    max_q_len = 0
+    max_c_len = 0
+    logger.info("Loading training data...")
+    with gfile.GFile(config.train_question_file, mode="rb") as q_file, \
+         gfile.GFile(config.train_context_file, mode="rb") as c_file, \
+         gfile.GFile(config.train_answer_span_file, mode="rb") as a_file:
+
+            for (q, c, a) in zip(q_file, c_file, a_file):
+                question = strip(q)
+                context = strip(c)
+                answer = strip(a)
+                sample = [question, len(question), context, len(context), answer]
+                train.append(sample)
+                max_q_len = max(max_q_len, len(question))
+                max_c_len = max(max_c_len, len(context))
+                if debug and len(train) == debug_train_samples:
+                    break
+    logger.info("Finish loading %d train data." % len(train))
+
+    val = []
+    logger.info("Loading validation data...")
+    with gfile.GFile(config.val_question_file, mode="rb") as q_file, \
+         gfile.GFile(config.val_context_file, mode="rb") as c_file, \
+         gfile.GFile(config.val_answer_span_file, mode="rb") as a_file:
+            for (q, c, a) in zip(q_file, c_file, a_file):
+                question = strip(q)
+                context = strip(c)
+                answer = strip(a)
+                sample = [question, len(question), context, len(context), answer]
+                val.append(sample)
+                max_q_len = max(max_q_len, len(question))
+                max_c_len = max(max_c_len, len(context))
+                if debug and len(val) == debug_val_samples:
+                    break
+    logger.info("Finish loading %d validation data." % len(val))
+    logger.info("Max question length %d" % max_q_len)
+    logger.info("Max context length %d" % max_c_len)
+
+    return {"training": train, "validation": val}
 
 
 def get_minibatches(data, minibatch_size, shuffle=True):

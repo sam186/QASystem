@@ -10,7 +10,7 @@ import tensorflow as tf
 from qa_model import Encoder, QASystem, Decoder
 from os.path import join as pjoin
 
-from utils.data_reader import read_data
+from utils.data_reader import read_data, load_glove_embeddings
 
 import logging
 
@@ -85,10 +85,10 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    # Do what you need to load datasets from FLAGS.data_dir
+    dataset = read_data(FLAGS.data_dir, debug=False)
 
-    embeddings, train_questions, train_context, train_answer_span = read_data(FLAGS.data_dir, FLAGS.embedding_size)
-    dataset = (embeddings, train_questions, train_context, train_answer_span)
+    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
+    embeddings = load_glove_embeddings(embed_path)
 
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
