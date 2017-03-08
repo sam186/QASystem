@@ -9,7 +9,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
-from utils import minibatches
+from utils.data_reader import minibatches
 
 from evaluate import exact_match_score, f1_score
 

@@ -25,7 +25,7 @@ def load_glove_embeddings(embed_path):
     logger.info("Vocabulary: {}" .format(glove.shape[0]))
     return glove
 
-def add_paddings(sentence, n_features, max_length):
+def add_paddings(sentence, max_length, n_features=1):
     zero_vector = [0] * n_features
     mask = [True] * len(sentence)
     pad_len = max_length - len(sentence)
@@ -36,7 +36,7 @@ def add_paddings(sentence, n_features, max_length):
         padded_sentence = sentence[:max_length]
     return padded_sentence, mask
 
-def featurize_paragraph(self, paragraph, paragraph_length):
+def featurize_paragraph(paragraph, paragraph_length):
     # TODO: Split by sentence instead of word
     sentences = [[word] for word in paragraph]
     return sentences
@@ -110,8 +110,6 @@ def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
     val = preprocess_dataset(val, question_maxlen, context_maxlen)
 
     return {"training": train, "validation": val}
-
-
 
 
 def get_minibatches(data, minibatch_size, shuffle=True):
