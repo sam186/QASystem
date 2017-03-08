@@ -92,9 +92,9 @@ class QASystem(object):
 
         # ==== set up placeholder tokens ========
         self.question_inputs = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
-        self.question_masks = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
+        # self.question_masks = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
         self.context_inputs = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
-        self.context_masks = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
+        # self.context_masks = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
         self.labels_placeholder = tf.placeholder(tf.int32, shape=(None, 2))
         self.dropout_placeholder = tf.placeholder(tf.float32, shape=())
 
@@ -120,18 +120,30 @@ class QASystem(object):
         Returns:
             pred: tensor of shape (batch_size, 2, n_classes)
         """
+        USE_CONTEXT_MASKS = False
+
         feature_size = tf.shape(X)[1]
         xavier_initializer = xavier_weight_init()
         W1 = tf.Variable(xavier_initializer((feature_size, n_classes)), name='W1')
         b1 = tf.Variable(tf.zeros((n_classes,)), name='b1')
         pred1 = tf.matmul(X, W1)+b1
 
+        if USE_CONTEXT_MASKS:
+            assert pred1.get_shape().as_list() == [None, self.config.context_maxlen], \
+            "predictions are not of the right shape. Expected {}, got {}".format([None, 2, self.config.context_maxlen], pred1.get_shape().as_list())
+            pred1 = tf.boolean_mask(pred1, self.context_masks)
+
         W2 = tf.Variable(xavier_initializer((feature_size, n_classes)), name='W2')
         b2 = tf.Variable(tf.zeros((n_classes,)), name='b2')
         pred2 = tf.matmul(X, W2)+b2
 
+        if USE_CONTEXT_MASKS:
+            assert pred2.get_shape().as_list() == [None, self.config.context_maxlen], \
+            "predictions are not of the right shape. Expected {}, got {}".format([None, 2, self.config.context_maxlen], pred2.get_shape().as_list())
+            pred2 = tf.boolean_mask(pred2, self.context_masks)
+
         preds =  tf.stack([pred1, pred2], axis = 1)
-        assert preds.get_shape().as_list() == [None, 2, n_classes], "predictions are not of the right shape. Expected {}, got {}".format([None, 2, n_classes], preds.get_shape().as_list())
+        assert preds.get_shape().as_list() == [None, 2, None], "predictions are not of the right shape. Expected {}, got {}".format([None, 2, None], preds.get_shape().as_list())
         return preds
 
 
@@ -180,6 +192,9 @@ class QASystem(object):
     def setup_loss(self, preds):
         """
         Set up your loss computation here
+        Args:
+            preds: A tensor of shape (batch_size, 2, n_classes) containing the output of the neural
+                  network before the softmax layer.
         :return:
         """
         with vs.variable_scope("loss"):
@@ -203,15 +218,17 @@ class QASystem(object):
 
         return （context_embeddings, question_embeddings）
 
-    def create_feed_dict(self, inputs_batch, mask_batch, labels_batch=None, dropout=1):
+    def create_feed_dict(self, question_inputs, context_inputs, labels_batch=None, question_masks = None, context_masks = None, dropout=0.5):
 
-        feed_dict = {self.question_inputs: , \
-                    self.question_masks: , \
-                    self.context_inputs: ,\
-                    self.context_masks: ,\
+        feed_dict = {self.question_inputs: question_inputs, \
+                    self.context_inputs: context_inputs,\
                     self.dropout_placeholder: dropout}
         if labels_batch!=None:
-            feed_dict[self.labels_placeholder]=labels_batch
+            feed_dict[self.labels_placeholder] = labels_batch
+        if question_masks != None:
+            feed_dict[self.question_masks] = question_masks
+        if context_masks != None:
+            feed_dict[self.context_masks] = context_masks
 
         return feed_dict
 
@@ -221,7 +238,7 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        input_feed = {}
+        input_feed = self.create_feed_dict(question_inputs = question_inputs, context_inputs = question_inputs, labels)
 
         # fill in this feed_dictionary like:
         # input_feed['train_x'] = train_x
