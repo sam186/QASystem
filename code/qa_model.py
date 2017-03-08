@@ -46,9 +46,9 @@ class Encoder(object):
                  or both.
         """
         # Forward direction cell
-        lstm_fw_cell = tf.rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
         # Backward direction cell
-        lstm_bw_cell = tf.rnn.BasicLSTMCell(self.size, state_is_tuple=True)
+        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
         # Get lstm cell output
         (fw_h, bw_h), _ = tf.nn.bidirectional_dynamic_rnn( \
             lstm_fw_cell, lstm_bw_cell, inputs=inputs, dtype=tf.float32)
@@ -106,6 +106,15 @@ class QASystem(object):
         # ==== set up training/updating procedure ====
         pass
 
+    def create_feed_dict(self, 
+                         question_batch, 
+                         context_batch, 
+                         labels_batch=None):
+        feed_dict = {}
+        feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.context_placeholder] = context_batch
+        if labels_batch is not None:
+            feed_dict[self.labels_placeholder] = labels_batch
 
     def setup_system(self):
         """
