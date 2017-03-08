@@ -38,6 +38,8 @@ tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embeddin
 tf.app.flags.DEFINE_string("question_maxlen", 30, "Max length of question (default: 30")
 tf.app.flags.DEFINE_string("context_maxlen", 400, "Max length of the context (default: 400)")
 
+tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
+
 
 FLAGS = tf.app.flags.FLAGS
 

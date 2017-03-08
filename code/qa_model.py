@@ -95,17 +95,44 @@ class QASystem(object):
         self.question_masks = tf.placeholder(tf.int32, shape=(None, config.question_maxlen))
         self.context_inputs = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
         self.context_masks = tf.placeholder(tf.int32, shape=(None, config.context_maxlen))
-
+        self.labels_placeholder = tf.placeholder(tf.int32, shape=(None, 2))
+        self.dropout_placeholder = tf.placeholder(tf.float32, shape=())
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
+            # get embeddings for input
+            
             self.x, self.q = self.setup_embeddings()
+            # pred from x and q
             self.pred = self.setup_system(self.x, self.q)
             self.loss = self.setup_loss(self.pred)
 
         # ==== set up training/updating procedure ====
-        # ?train_op = e.g. tf.train.AdamOptimizer(self.config.lr).minimize(loss)
-        pass
+        get_op = get_optimizer("adam")
+        train_op = get_op(self.config.lr).minimize(loss)
+        
+
+    def logistic_regression(self, X, n_classes = self.config.context_maxlen):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: A tensor of shape (batch_size, feature_size)
+        Returns:
+            pred: tensor of shape (batch_size, 2, n_classes)
+        """
+        feature_size = tf.shape(X)[1]
+        xavier_initializer = xavier_weight_init()
+        W1 = tf.Variable(xavier_initializer((feature_size, n_classes)), name='W1')
+        b1 = tf.Variable(tf.zeros((n_classes,)), name='b1')
+        pred1 = tf.matmul(X, W1)+b1
+
+        W2 = tf.Variable(xavier_initializer((feature_size, n_classes)), name='W2')
+        b2 = tf.Variable(tf.zeros((n_classes,)), name='b2')
+        pred2 = tf.matmul(X, W2)+b2
+
+        preds =  tf.stack([pred1, pred2], axis = 1)
+        assert preds.get_shape().as_list() == [None, 2, n_classes], "predictions are not of the right shape. Expected {}, got {}".format([None, 2, n_classes], preds.get_shape().as_list())
+        return preds
 
 
     def setup_system(self, x, q):
@@ -113,11 +140,19 @@ class QASystem(object):
         After your modularized implementation of encoder and decoder
         you should call various functions inside encoder, decoder here
         to assemble your reading comprehension system!
+
+        Args:
+            #   self.x, input from context, with shape of [None, self.config.context_maxlen, self.config.embedding_size]
+            #   self.q, input from question with shape of [None, self.config.question_maxlen, self.config.embedding_size]
+
         :return:
         """
         # Step 1: encode x and q, respectively, with independent weights
         #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
         #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+
+        H = tf.reshape(x, shape = [-1, self.config.context_maxlen * self.config.embedding_size])
+        U = tf.reshape(q, shape = [-1, self.config.question_maxlen * self.config.embedding_size])
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -130,22 +165,26 @@ class QASystem(object):
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
+        G = tf.concat(1, [H, U])
+
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-
-        raise NotImplementedError("Connect all parts of your system here!")
-
-        # retunr (pred_start, pred_end)
+        preds = self.logistic_regression(X)
 
 
-    def setup_loss(self):
+        # raise NotImplementedError("Connect all parts of your system here!")
+        return preds
+
+
+    def setup_loss(self, preds):
         """
         Set up your loss computation here
         :return:
         """
         with vs.variable_scope("loss"):
-            pass
+            loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(preds, self.labels_placeholder),)  
+        return loss
 
     def setup_embeddings(self):
         """
@@ -153,13 +192,28 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("embeddings"):
-            pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
+            if self.config.RE_TRAIN_EMBED:
+                pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
+            else:
+                pretrained_embeddings = self.pretrained_embeddings
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_inputs)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_inputs)
             context_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size])
 
         return （context_embeddings, question_embeddings）
+
+    def create_feed_dict(self, inputs_batch, mask_batch, labels_batch=None, dropout=1):
+
+        feed_dict = {self.question_inputs: , \
+                    self.question_masks: , \
+                    self.context_inputs: ,\
+                    self.context_masks: ,\
+                    self.dropout_placeholder: dropout}
+        if labels_batch!=None:
+            feed_dict[self.labels_placeholder]=labels_batch
+
+        return feed_dict
 
     def optimize(self, session, train_x, train_y):
         """
