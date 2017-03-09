@@ -1,0 +1,99 @@
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.269759 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.358190 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.300679 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.316515 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.285829 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.297104 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.310478 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.310098 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.302774 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.313563 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.296437 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.329073 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.310380 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.295336 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.317256 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.302329 secs)
+Epoch 1 out of 10
+Epoch 2 out of 10
+Epoch 3 out of 10
+Epoch 4 out of 10
+Epoch 5 out of 10
+Epoch 6 out of 10
+Epoch 7 out of 10
+Epoch 8 out of 10
+Epoch 9 out of 10
+Epoch 10 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.298045 secs)
+Epoch 1 out of 10
+Epoch 2 out of 10
+Epoch 3 out of 10
+Epoch 4 out of 10
+Epoch 5 out of 10
+Epoch 6 out of 10
+Epoch 7 out of 10
+Epoch 8 out of 10
+Epoch 9 out of 10
+Epoch 10 out of 10
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.304225 secs)
+Epoch 1 out of 10
+Epoch 2 out of 10
+Epoch 3 out of 10
+Epoch 4 out of 10
+Epoch 5 out of 10
+Epoch 6 out of 10
+Epoch 7 out of 10
+Epoch 8 out of 10
+Epoch 9 out of 10
+Epoch 10 out of 10
