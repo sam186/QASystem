@@ -165,15 +165,6 @@ class QASystem(object):
         get_op = get_optimizer(self.config.optimizer)
         train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
-        feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_length_placeholder] = question_length_batch
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_length_placeholder] = context_length_batch
-        if labels_batch is not None:
-            feed_dict[self.labels_placeholder] = labels_batch
-
     def logistic_regression(self, X):
         """
         With any kind of representation, do 2 independent classifications
@@ -309,7 +300,7 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=labels_batch)
+        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         
         # fill in this feed_dictionary like:
         # input_feed['train_x'] = train_x
@@ -326,7 +317,7 @@ class QASystem(object):
         and tune your hyperparameters according to the validation set performance
         :return:
         """
-        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=labels_batch)
+        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         
         # fill in this feed_dictionary like:
         # input_feed['valid_x'] = valid_x
@@ -343,7 +334,7 @@ class QASystem(object):
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=labels_batch)
+        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         
 
         # fill in this feed_dictionary like:
@@ -408,30 +399,31 @@ class QASystem(object):
 
         return f1, em
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
+    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
         feed_dict[self.question_length_placeholder] = question_length_batch
         feed_dict[self.context_placeholder] = context_batch
         feed_dict[self.context_length_placeholder] = context_length_batch
-        if labels_batch is not None:
-            feed_dict[self.labels_placeholder] = labels_batch
+        if answer_batch is not None:
+            feed_dict[self.answer_placeholders] = answer_batch
 
-    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch):
-        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=labels_batch)
+    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
+        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         loss = 0.00
         # TODO: set up loss
         # _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
         return loss
 
     def run_epoch(self, session, training_set, validation_set):
-        for i in batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            loss = self.train_on_batch(sess, *batch)
+        # print (np.array(training_set[0]))
+        for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
+            loss = self.train_on_batch(session, *batch)
 
         # TODO: Evaluate on training set
-        f1, em = evaluate_answer(session, training_set)
+        f1, em = self.evaluate_answer(session, training_set)
         # TODO: Evaluate on validation set
-        f1, em = evaluate_answer(session, validation_set)
+        f1, em = self.evaluate_answer(session, validation_set)
         return 0
 
 
