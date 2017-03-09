@@ -46,10 +46,14 @@ class Attention(object):
 
         :return: [N, JX, d_com]
         """
+        logging.debug('-'*5 + 'attention' + '-'*5)
+        logging.debug('Context representation: %s' % str(h))
+        logging.debug('Question representation: %s' % str(u))
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         d_en = h.get_shape().as_list()[-1]
         assert h.get_shape().as_list() == [None, JX, d_en]
-        assert u.get_shape().as_list() == [None, JQ, d_en]
+        # assert u.get_shape().as_list() == [None, JQ, d_en]
+        assert u.get_shape().as_list() == [None, d_en]
 
         h = tf.reshape(h, shape = [-1, JX, 1, d_en])
         u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
@@ -61,6 +65,7 @@ class Attention(object):
         u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
         u_a = tf.reduce_sum(tf.multiply(a_x, u), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
         assert u_a.get_shape().as_list() == [None, JX, d_en]
+        logging.debug('Context with attention: %s' % str(u_a))
         return u_a
 
 class Encoder(object):
@@ -81,6 +86,8 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
+
+        logging.debug('-'*5 + 'encode' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
         # Backward direction cell
@@ -91,6 +98,7 @@ class Encoder(object):
         if encoder_state_input is not None:
             initial_state_fw, initial_state_bw = encoder_state_input
 
+        logging.debug('Inputs: %s' % str(inputs))
 
         # Get lstm cell output
         outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
@@ -103,10 +111,14 @@ class Encoder(object):
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
+
+        logging.debug('fw hidden state: %s' % str(outputs[0]))
         hidden_state = tf.concat(2, outputs)
+        logging.debug('Concatenated bi-LSTM hidden state: %s' % str(hidden_state))
         # final_state_fw and final_state_bw are the final states of the forwards/backwards LSTM
         (final_state_fw, final_state_bw) = final_output_states
         concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
+        logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
         return hidden_state, concat_final_state, final_output_states
 
 
@@ -126,10 +138,21 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
-        lstm_cell = tf.rnn.BasicLSTMCell(self.output_size, state_is_tuple=True)
-        (output, _) = tf.nn.dynamic_rnn(lstm_cell, lstm_cell, inputs=knowledge_rep, dtype=tf.float32)
+        logging.debug('-'*5 + 'decode' + '-'*5)
+        logging.debug('Input knowledge_rep: %s' % str(knowledge_rep))
+        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=1, state_is_tuple=True)
+        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float64)
+        logging.debug('Hidden state: %s' % str(hidden_states))
+        xavier_initializer=tf.contrib.layers.xavier_initializer()
+        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float64)
+        preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
+        preds = tf.greater_equal(preds, 0.5)
+        def true_index(t):
+            return tf.reduce_min(tf.where(tf.equal(t, True)))
+        s_idx = tf.map_fn(true_index, preds, dtype=tf.int64)
 
-        return output
+        e_idx = s_idx
+        return s_idx, e_idx
 
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
@@ -225,10 +248,6 @@ class QASystem(object):
             context_sentence_repr, context_repr, context_state =\
                  self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
 
-        d_en = d
-        assert h.get_shape().as_list() == [None, JX, d_en] 
-        assert u.get_shape().as_list() == [None, JQ, d_en] 
-
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
         #              a_x = softmax(S)
@@ -236,15 +255,11 @@ class QASystem(object):
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
 
-        attention_model = Attention()
         context_attention_state = self.attention.calculate(context_sentence_repr, question_repr)
 
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
-        g1 = g0
-        d_en2 = d_com
-        assert g1.get_shape().as_list() == [None, JX, d_en2] 
         
 
         # Step 4: decode
@@ -253,7 +268,7 @@ class QASystem(object):
         answer_start, answer_end = self.decoder.decode(context_attention_state)
 
         # raise NotImplementedError("Connect all parts of your system here!")
-        return preds
+        return (answer_start, answer_end)
 
 
     def setup_loss(self, preds):
@@ -277,7 +292,7 @@ class QASystem(object):
             if self.config.RE_TRAIN_EMBED:
                 pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
             else:
-                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
+                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float64)
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
