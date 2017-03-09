@@ -35,8 +35,8 @@ class Attention(object):
         #         e.g. S = h.T * u
         #              a_x = softmax(S)
         #              a_q = softmax(S.T)
-        #              U_hat = sum(a_x*U)
-        #              H_hat = sum(a_q*H)
+        #              u_a = sum(a_x*U)
+        #              h_a = sum(a_q*H)
         """
         :param h: [N, JX, d_en]
         :param u: [N, JQ, d_en]
@@ -46,7 +46,14 @@ class Attention(object):
 
         :return: [N, JX, d_com]
         """
-
+        s = # [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
+        a_x = tf.nn.softmax(s, dim=-1) # -> [N, JX, softmax(JQ)]
+        for ni in range(N):
+            for t in range(JX):
+                a_x[ni, t] # vector [JQ]
+                u[ni] # [JQ, d_en]
+                # sum(tile_a_x * u[ni], -2)
+        u_a =  # -> [N, JX, d_en]
         attention = tf.nn.softmax(tf.matmul(h, tf.expand_dims(u, -1)))
         context_attention_state = h * attention
         return context_attention_state
@@ -209,9 +216,9 @@ class QASystem(object):
         assert self.q.get_shape().as_list() == [None, JQ, d] 
 
 
-        # Step 1: encode x and q, respectively, with independent weights
-        #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
-        #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+        # Step 1: encode x and q
+        #         e.g. h = encode_context(x)   # get H (2d*T) as representation of x
+        #         e.g. u = encode_question(q)  # get U (2d*J) as representation of q
         with tf.variable_scope('q'):
             question_sentence_repr, question_repr, question_state = \
                  self.encoder.encode(inputs=q, sequence_length=self.question_length_placeholder, encoder_state_input=None)
@@ -221,8 +228,8 @@ class QASystem(object):
                  self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
 
         d_en = d
-        assert H.get_shape().as_list() == [None, JX, d_en] 
-        assert U.get_shape().as_list() == [None, JQ, d_en] 
+        assert h.get_shape().as_list() == [None, JX, d_en] 
+        assert u.get_shape().as_list() == [None, JQ, d_en] 
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
