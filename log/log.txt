@@ -1,0 +1,4 @@
+Created model with fresh parameters.
+Num params: 202
+Number of params: 202 (retreival took 0.269759 secs)
+Epoch 1 out of 10
