@@ -9,7 +9,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
-from utils import minibatches
+from utils.data_reader import minibatches
 
 from evaluate import exact_match_score, f1_score
 
@@ -131,7 +131,6 @@ class QASystem(object):
         self.pretrained_embeddings = pretrained_embeddings
         self.encoder = encoder
         self.decoder = decoder
-        self.attention = Attention()
         self.config = config
 
         # ==== set up placeholder tokens ========
@@ -162,22 +161,8 @@ class QASystem(object):
         if labels_batch is not None:
             feed_dict[self.labels_placeholder] = labels_batch
 
-    # def create_feed_dict(self, question_inputs, context_inputs, labels_batch=None, question_masks = None, context_masks = None, dropout=0.5):
-
-    #     feed_dict = {self.question_inputs: question_inputs, \
-    #                 self.context_inputs: context_inputs,\
-    #                 self.dropout_placeholder: dropout}
-    #     if labels_batch!=None:
-    #         feed_dict[self.labels_placeholder] = labels_batch
-    #     if question_masks != None:
-    #         feed_dict[self.question_masks] = question_masks
-    #     if context_masks != None:
-    #         feed_dict[self.context_masks] = context_masks
-
-    #     return feed_dict
-        
-
-    def logistic_regression(self, X, n_classes = self.config.context_maxlen):
+    def logistic_regression(self, X):
+        n_classes = config.context_maxlen
         """
         With any kind of representation, do 2 independent classifications
         Args:
@@ -186,7 +171,7 @@ class QASystem(object):
             pred: [N, 2, JX]
         """
         JX = self.config.context_maxlen
-        d = tf.shape(X)[－1]
+        d = tf.shape(X)[-1]
         assert self.x.get_shape().as_list() == [None, JX, d] 
 
         USE_CONTEXT_MASKS = False
@@ -200,7 +185,6 @@ class QASystem(object):
         W2 = tf.Variable(xavier_initializer((d, )), name='W2')
         b2 = tf.Variable(tf.zeros((1,)), name='b2')
         pred2 = tf.matmul(X, W2)+b2 # [N, JX, d]*[d,] +[1,] -> [N, JX]
-
 
         preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         assert preds.get_shape().as_list() == [None, 2, JX]
@@ -225,12 +209,20 @@ class QASystem(object):
         assert self.q.get_shape().as_list() == [None, JQ, d] 
 
 
-        # Step 1: encode x and q, respectively
-        #         e.g. h = encode_context(x)   # get H (2d*T) as representation of x
-        #         e.g. u = encode_question(q)  # get U (2d*J) as representation of q
+        # Step 1: encode x and q, respectively, with independent weights
+        #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
+        #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+        with tf.variable_scope('q'):
+            question_sentence_repr, question_repr, question_state = \
+                 self.encoder.encode(inputs=q, sequence_length=self.question_length_placeholder, encoder_state_input=None)
+
+        with tf.variable_scope('c'):
+            context_sentence_repr, context_repr, context_state =\
+                 self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
+
         d_en = d
-        assert h.get_shape().as_list() == [None, JX, d_en] 
-        assert u.get_shape().as_list() == [None, JQ, d_en] 
+        assert H.get_shape().as_list() == [None, JX, d_en] 
+        assert U.get_shape().as_list() == [None, JQ, d_en] 
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -253,6 +245,10 @@ class QASystem(object):
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
+        # answer_start, answer_end = self.decoder.decode(context_attention_state)
+
+
+        
         preds = self.logistic_regression(g1)
         assert d_ans == 2
         assert preds.get_shape().as_list() == [N, d_ans, JX]
