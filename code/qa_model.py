@@ -196,6 +196,13 @@ class QASystem(object):
         # Step 1: encode x and q, respectively, with independent weights
         #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
         #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+        with tf.variable_scope('q'):
+            question_sentence_repr, question_repr, question_state = \
+                 self.encoder.encode(inputs=q, sequence_length=self.question_length_placeholder, encoder_state_input=None)
+
+        with tf.variable_scope('c'):
+            context_sentence_repr, context_repr, context_state =\
+                 self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
 
         d_en = d
         assert H.get_shape().as_list() == [None, JX, d_en] 
@@ -208,6 +215,8 @@ class QASystem(object):
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
 
+        attention_model = Attention()
+        context_attention_state = attention_model.calculate(context_sentence_repr, question_repr)
 
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
@@ -220,8 +229,7 @@ class QASystem(object):
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        preds = self.logistic_regression(G)
-
+        answer_start, answer_end = self.decoder.decode(context_attention_state)
 
         # raise NotImplementedError("Connect all parts of your system here!")
         return preds
