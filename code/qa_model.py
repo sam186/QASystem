@@ -146,22 +146,8 @@ class QASystem(object):
         if labels_batch is not None:
             feed_dict[self.labels_placeholder] = labels_batch
 
-    # def create_feed_dict(self, question_inputs, context_inputs, labels_batch=None, question_masks = None, context_masks = None, dropout=0.5):
-
-    #     feed_dict = {self.question_inputs: question_inputs, \
-    #                 self.context_inputs: context_inputs,\
-    #                 self.dropout_placeholder: dropout}
-    #     if labels_batch!=None:
-    #         feed_dict[self.labels_placeholder] = labels_batch
-    #     if question_masks != None:
-    #         feed_dict[self.question_masks] = question_masks
-    #     if context_masks != None:
-    #         feed_dict[self.context_masks] = context_masks
-
-    #     return feed_dict
-        
-
-    def logistic_regression(self, X, n_classes = self.config.context_maxlen):
+    def logistic_regression(self, X):
+        n_classes = config.context_maxlen
         """
         With any kind of representation, do 2 independent classifications
         Args:
@@ -170,7 +156,7 @@ class QASystem(object):
             pred: [N, 2, JX]
         """
         JX = self.config.context_maxlen
-        d = tf.shape(X)[－1]
+        d = tf.shape(X)[-1]
         assert self.x.get_shape().as_list() == [None, JX, d] 
 
         USE_CONTEXT_MASKS = False
@@ -276,7 +262,7 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        input_feed = self.create_feed_dict(question_inputs = question_inputs, context_inputs = question_inputs, labels)
+        input_feed = {}
 
         # fill in this feed_dictionary like:
         # input_feed['train_x'] = train_x
