@@ -27,14 +27,41 @@ def get_optimizer(opt):
 
 
 class Attention(object):
-    def __init__(self):
-        pass
+    def __init__(self, config):
+        self.config = config
 
-    def calculate(self, context_state, question_state):
+    def calculate(self, h, u):
         # compare the question representation with all the context hidden states.
-        attention = tf.nn.softmax(tf.matmul(context_state, tf.expand_dims(question_state, -1)))
-        context_attention_state = context_state * attention
-        return context_attention_state
+        #         e.g. S = h.T * u
+        #              a_x = softmax(S)
+        #              a_q = softmax(S.T)
+        #              u_a = sum(a_x*U)
+        #              h_a = sum(a_q*H)
+        """
+        :param h: [N, JX, d_en]
+        :param u: [N, JQ, d_en]
+        :param h_mask:  [N, JX]
+        :param u_mask:  [N, JQ]
+        :param scope:
+
+        :return: [N, JX, d_com]
+        """
+        JX, JQ = self.config.context_maxlen, self.config.question_maxlen
+        d_en = h.get_shape().as_list()[-1]
+        assert h.get_shape().as_list() == [None, JX, d_en]
+        assert u.get_shape().as_list() == [None, JQ, d_en]
+
+        h = tf.reshape(h, shape = [-1, JX, 1, d_en])
+        u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
+        s = tf.reduce_sum(tf.multiply(h, u), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
+        a_x = tf.nn.softmax(s, dim=-1) # softmax -> [N, JX, softmax(JQ)]
+        assert a_x.get_shape().as_list() == [None, JX, JQ]
+
+        a_x = tf.reshape(a_x, shape = [-1, JX, JQ, 1])
+        u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
+        u_a = tf.reduce_sum(tf.multiply(a_x, u), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
+        assert u_a.get_shape().as_list() == [None, JX, d_en]
+        return u_a
 
 class Encoder(object):
     def __init__(self, size, vocab_dim):
@@ -117,6 +144,7 @@ class QASystem(object):
         self.encoder = encoder
         self.decoder = decoder
         self.config = config
+        self.attention = Attention(config)
 
         # ==== set up placeholder tokens ========
         self.question_placeholder = tf.placeholder(tf.int32, shape=(None, config.question_maxlen, config.n_features))
@@ -134,42 +162,34 @@ class QASystem(object):
             self.loss = self.setup_loss(self.pred)
 
         # ==== set up training/updating procedure ====
-        get_op = get_optimizer("adam")
-        train_op = get_op(self.config.lr).minimize(loss)
+        get_op = get_optimizer(self.config.optimizer)
+        train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
-        feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_length_placeholder] = question_length_batch
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_length_placeholder] = context_length_batch
-        if labels_batch is not None:
-            feed_dict[self.labels_placeholder] = labels_batch
 
     def logistic_regression(self, X):
-        n_classes = config.context_maxlen
         """
         With any kind of representation, do 2 independent classifications
         Args:
-            X: [N, JX, d_com]
+            X: [N, JX, d_en2]
         Returns:
             pred: [N, 2, JX]
         """
         JX = self.config.context_maxlen
-        d = tf.shape(X)[-1]
+        d = self.x.get_shape().as_list()[-1]
         assert self.x.get_shape().as_list() == [None, JX, d] 
 
-        USE_CONTEXT_MASKS = False
+        X = tf.reshape(X, shape = [-1, d])
 
-        xavier_initializer = xavier_weight_init()
-        W1 = tf.Variable(xavier_initializer((d, )), name='W1')
-        b1 = tf.Variable(tf.zeros((1,)), name='b1')
-        pred1 = tf.matmul(X, W1)+b1 # [N, JX, d]*[d,] +[1,] -> [N, JX]
-
-
-        W2 = tf.Variable(xavier_initializer((d, )), name='W2')
-        b2 = tf.Variable(tf.zeros((1,)), name='b2')
-        pred2 = tf.matmul(X, W2)+b2 # [N, JX, d]*[d,] +[1,] -> [N, JX]
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1))
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,))
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1))
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,))
+        
+        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
+        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
         preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         assert preds.get_shape().as_list() == [None, 2, JX]
@@ -185,13 +205,14 @@ class QASystem(object):
         :return:
         """
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
-        d = tf.shape(self.x)[-1] # self.config.embedding_size * self.config.n_features
+        d = self.x.get_shape().as_list()[-1] # self.config.embedding_size * self.config.n_features
+        d_ans = self.config.answer_size
         # Args:
             #   self.x: [None, JX, d]
             #   self.q: [None, JQ, d]
-        assert self.x.get_shape().as_list() == [None, JX, d] 
+        assert self.x.get_shape().as_list() == [None, JX, d], "Expected {}, got {}".format([None, JX, d], self.x.get_shape().as_list())
+        
         assert self.q.get_shape().as_list() == [None, JQ, d] 
-
 
         # Step 1: encode x and q, respectively, with independent weights
         #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
@@ -205,8 +226,8 @@ class QASystem(object):
                  self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
 
         d_en = d
-        assert H.get_shape().as_list() == [None, JX, d_en] 
-        assert U.get_shape().as_list() == [None, JQ, d_en] 
+        assert h.get_shape().as_list() == [None, JX, d_en] 
+        assert u.get_shape().as_list() == [None, JQ, d_en] 
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -216,15 +237,15 @@ class QASystem(object):
         #              H_hat = sum(a_q*H)
 
         attention_model = Attention()
-        context_attention_state = attention_model.calculate(context_sentence_repr, question_repr)
+        context_attention_state = self.attention.calculate(context_sentence_repr, question_repr)
 
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
-        # G = tf.concat(1, [H, U])
+        g1 = g0
+        d_en2 = d_com
+        assert g1.get_shape().as_list() == [None, JX, d_en2] 
         
-        d_com = d
-        assert G.get_shape().as_list() == [None, JX, d_com] 
 
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
@@ -256,7 +277,7 @@ class QASystem(object):
             if self.config.RE_TRAIN_EMBED:
                 pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
             else:
-                pretrained_embeddings = self.pretrained_embeddings
+                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
@@ -270,12 +291,12 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        input_feed = {}
-
+        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        
         # fill in this feed_dictionary like:
         # input_feed['train_x'] = train_x
 
-        output_feed = [] #[self.train_op, self.loss]
+        output_feed = [self.train_op, self.loss]
 
         outputs = session.run(output_feed, input_feed)
 
@@ -287,8 +308,8 @@ class QASystem(object):
         and tune your hyperparameters according to the validation set performance
         :return:
         """
-        input_feed = {}
-
+        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        
         # fill in this feed_dictionary like:
         # input_feed['valid_x'] = valid_x
 
@@ -304,7 +325,8 @@ class QASystem(object):
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        input_feed = {}
+        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        
 
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
@@ -368,30 +390,31 @@ class QASystem(object):
 
         return f1, em
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=None):
+    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
         feed_dict[self.question_length_placeholder] = question_length_batch
         feed_dict[self.context_placeholder] = context_batch
         feed_dict[self.context_length_placeholder] = context_length_batch
-        if labels_batch is not None:
-            feed_dict[self.labels_placeholder] = labels_batch
+        if answer_batch is not None:
+            feed_dict[self.answer_placeholders] = answer_batch
 
-    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, labels_batch):
-        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, labels_batch=labels_batch)
+    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
+        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         loss = 0.00
         # TODO: set up loss
         # _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
         return loss
 
     def run_epoch(self, session, training_set, validation_set):
-        for i in batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            loss = self.train_on_batch(sess, *batch)
+        # print (np.array(training_set[0]))
+        for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
+            loss = self.train_on_batch(session, *batch)
 
         # TODO: Evaluate on training set
-        f1, em = evaluate_answer(session, training_set)
+        f1, em = self.evaluate_answer(session, training_set)
         # TODO: Evaluate on validation set
-        f1, em = evaluate_answer(session, validation_set)
+        f1, em = self.evaluate_answer(session, validation_set)
         return 0
 
 
@@ -442,4 +465,3 @@ class QASystem(object):
             # Saving the model
             # saver = tf.train.Saver()
             # saver.save(session, train_dir)
-

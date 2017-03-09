@@ -48,8 +48,8 @@ def preprocess_dataset(dataset, question_maxlen, context_maxlen):
         c_sentences = featurize_paragraph(c, c_len)
 
         # add padding:
-        q_sentences = add_paddings(q_sentences, question_maxlen)
-        c_sentences = add_paddings(c_sentences, context_maxlen)
+        q_sentences, q_mask = add_paddings(q_sentences, question_maxlen)
+        c_sentences, c_mask = add_paddings(c_sentences, context_maxlen)
         processed.append([q_sentences, q_len, c_sentences, c_len, ans])
     return processed
 
@@ -116,15 +116,11 @@ def get_minibatches(data, minibatch_size, shuffle=True):
     """
     Iterates through the provided data one minibatch at at time. You can use this function to
     iterate through data in minibatches as follows:
-
         for inputs_minibatch in get_minibatches(inputs, minibatch_size):
             ...
-
     Or with multiple data sources:
-
         for inputs_minibatch, labels_minibatch in get_minibatches([inputs, labels], minibatch_size):
             ...
-
     Args:
         data: there are two possible values:
             - a list or numpy array
@@ -137,7 +133,6 @@ def get_minibatches(data, minibatch_size, shuffle=True):
             - If data a list of lists/arrays it returns the next minibatch of each element in the
               list. This can be used to iterate through multiple data sources
               (e.g., features and labels) at the same time.
-
     """
     list_data = type(data) is list and (type(data[0]) is list or type(data[0]) is np.ndarray)
     data_size = len(data[0]) if list_data else len(data)
@@ -153,13 +148,9 @@ def minibatch(data, minibatch_idx):
     return data[minibatch_idx] if type(data) is np.ndarray else [data[i] for i in minibatch_idx]
 
 def minibatches(data, batch_size):
-    x = np.array([d[0] for d in data])
-    y = np.array([d[2] for d in data])
-    one_hot = np.zeros((y.size, 3))
-    one_hot[np.arange(y.size), y] = 1
-    return get_minibatches([x, one_hot], batch_size)
+    batches = [np.array(col) for col in zip(*data)]
+    return get_minibatches(batches, batch_size)
 
 
 if __name__ == '__main__':
     read_data('../../data/squad', 100)
-
