@@ -52,8 +52,7 @@ class Attention(object):
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         d_en = h.get_shape().as_list()[-1]
         assert h.get_shape().as_list() == [None, JX, d_en]
-        # assert u.get_shape().as_list() == [None, JQ, d_en]
-        assert u.get_shape().as_list() == [None, d_en]
+        assert u.get_shape().as_list() == [None, JQ, d_en]
 
         h = tf.reshape(h, shape = [-1, JX, 1, d_en])
         u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
@@ -146,13 +145,9 @@ class Decoder(object):
         xavier_initializer=tf.contrib.layers.xavier_initializer()
         b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float64)
         preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
-        preds = tf.greater_equal(preds, 0.5)
-        def true_index(t):
-            return tf.reduce_min(tf.where(tf.equal(t, True)))
-        s_idx = tf.map_fn(true_index, preds, dtype=tf.int64)
-
-        e_idx = s_idx
-        return s_idx, e_idx
+        start_idx = 0
+        end_idx = 0
+        return start_idxend_idxend
 
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
@@ -204,10 +199,10 @@ class QASystem(object):
         X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1))
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,))
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1))
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,))
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
@@ -255,20 +250,21 @@ class QASystem(object):
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
 
-        context_attention_state = self.attention.calculate(context_sentence_repr, question_repr)
+        context_attention_state = self.attention.calculate(context_sentence_repr, question_sentence_repr)
 
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
-        
 
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        answer_start, answer_end = self.decoder.decode(context_attention_state)
+        preds = self.logistic_regression(context_attention_state)
+        assert d_ans == 2
+        assert preds.get_shape().as_list() == [None, d_ans, JX]
 
         # raise NotImplementedError("Connect all parts of your system here!")
-        return (answer_start, answer_end)
+        return preds
 
 
     def setup_loss(self, preds):
