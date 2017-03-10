@@ -8,6 +8,7 @@ import logging
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+from operator import mul
 from tensorflow.python.ops import variable_scope as vs
 from utils.util import ConfusionMatrix, Progbar, minibatches
 
@@ -67,18 +68,28 @@ class Attention(object):
         logging.debug('Context with attention: %s' % str(u_a))
         return u_a
 
+def flatten(tensor, keep):
+    fixed_shape = tensor.get_shape().as_list()
+    start = len(fixed_shape) - keep
+    left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
+    out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
+    flat = tf.reshape(tensor, out_shape)
+    return flat
+
 class Encoder(object):
     def __init__(self, size, vocab_dim):
         self.size = size
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, sequence_length, encoder_state_input):
+
+
+    def encode(self, inputs, mask, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
         sequence_length, and an initial hidden state input into this function.
 
         :param inputs: Symbolic representations of your input (padded all to the same length)
-        :param sequence_length: Length of the sequence
+        :param mask: mask of the sequence
         :param encoder_state_input: (Optional) pass this as initial hidden state
                                     to tf.nn.dynamic_rnn to build conditional representations
         :return: an encoded representation of your input.
@@ -98,12 +109,14 @@ class Encoder(object):
             initial_state_fw, initial_state_bw = encoder_state_input
 
         logging.debug('Inputs: %s' % str(inputs))
-
+        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), 1)
+        flat_len = tf.cast(flatten(sequence_length, 0), 'int32')
+        logging.debug('flat_len: %s' % str(flat_len))
         # Get lstm cell output
         outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
                                                       inputs=inputs,\
-                                                      sequence_length=sequence_length,
+                                                      sequence_length=flat_len,
                                                       initial_state_fw=initial_state_fw,\
                                                       initial_state_bw=initial_state_bw,
                                                       dtype=tf.float64)
@@ -166,9 +179,9 @@ class QASystem(object):
 
         # ==== set up placeholder tokens ========
         self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen, config.n_features))
-        self.question_length_placeholder = tf.placeholder(dtype=tf.int32, name="q_len", shape=(None,))
+        self.question_mask_placeholder = tf.placeholder(dtype=tf.int32, name="q_mask", shape=(None, config.question_maxlen, config.n_features))
         self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
-        self.context_length_placeholder = tf.placeholder(dtype=tf.int32, name="c_len", shape=(None,))
+        self.context_mask_placeholder = tf.placeholder(dtype=tf.int32, name="c_mask", shape=(None, config.context_maxlen, config.n_features))
         self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
 
         # ==== assemble pieces ====
@@ -235,11 +248,11 @@ class QASystem(object):
         #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
         with tf.variable_scope('q'):
             question_sentence_repr, question_repr, question_state = \
-                 self.encoder.encode(inputs=q, sequence_length=self.question_length_placeholder, encoder_state_input=None)
+                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None)
 
         with tf.variable_scope('c'):
             context_sentence_repr, context_repr, context_state =\
-                 self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
+                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -306,8 +319,8 @@ class QASystem(object):
         print(training_set[2].shape)
         print(training_set[3].shape)
         print(training_set[4].shape)
-        question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = training_set
-        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
+        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
         output_feed = [self.train_op, self.loss]
 
@@ -321,8 +334,8 @@ class QASystem(object):
         and tune your hyperparameters according to the validation set performance
         :return:
         """
-        question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = validation_set
-        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = validation_set
+        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
         output_feed = [self.loss]
         outputs = session.run(output_feed, input_feed)
@@ -334,7 +347,7 @@ class QASystem(object):
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None)
+        input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None)
         
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
@@ -412,12 +425,12 @@ class QASystem(object):
 
         return f1, em
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
+    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_length_placeholder] = question_length_batch
+        feed_dict[self.question_mask_placeholder] = question_mask_batch
         feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_length_placeholder] = context_length_batch
+        feed_dict[self.context_mask_placeholder] = context_mask_batch
         if answer_batch is not None:
             feed_dict[self.answer_placeholders] = answer_batch
         return feed_dict
