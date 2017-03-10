@@ -10,6 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
 from utils.data_reader import minibatches
+from utils.util import ConfusionMatrix, Progbar
 
 from evaluate import exact_match_score, f1_score
 
@@ -296,16 +297,14 @@ class QASystem(object):
 
         return question_embeddings, context_embeddings
 
-    def optimize(self, session, train_x, train_y):
+    def optimize(self, session, training_set):
         """
         Takes in actual data to optimize your model
         This method is equivalent to a step() function
         :return:
         """
+        question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        
-        # fill in this feed_dictionary like:
-        # input_feed['train_x'] = train_x
 
         output_feed = [self.train_op, self.loss]
 
@@ -313,21 +312,20 @@ class QASystem(object):
 
         return outputs
 
-    def test(self, session, valid_x, valid_y):
+    def test(self, session, validation_set):
         """
         in here you should compute a cost for your validation set
         and tune your hyperparameters according to the validation set performance
         :return:
         """
+        question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = validation_set
         input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         
         # fill in this feed_dictionary like:
         # input_feed['valid_x'] = valid_x
 
-        output_feed = []
-
+        output_feed = [self.loss]
         outputs = session.run(output_feed, input_feed)
-
         return outputs
 
     def decode(self, session, test_x):
@@ -336,13 +334,12 @@ class QASystem(object):
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None)
         
-
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
 
-        output_feed = []
+        output_feed = [self.answer_placeholders]
 
         outputs = session.run(output_feed, input_feed)
 
@@ -369,15 +366,13 @@ class QASystem(object):
 
         :return:
         """
-        valid_cost = 0
+        valid_cost = self.test(sess, valid_dataset)
 
-        for valid_x, valid_y in valid_dataset:
-          valid_cost = self.test(sess, valid_x, valid_y)
-
+        # TODO: set up validation cost
 
         return valid_cost
 
-    def evaluate_answer(self, session, dataset, sample=100, log=False):
+    def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
         """
         Evaluate the model's performance using the harmonic mean of F1 and Exact Match (EM)
         with the set of true answer labels
@@ -396,6 +391,22 @@ class QASystem(object):
         f1 = 0.
         em = 0.
 
+        N = len(dataset)
+        sampleIndices = np.random.choice(N, sample)
+
+        for i in sampleIndices:
+            true_s = int(dataset[i][-1][0])
+            true_e = int(dataset[i][-1][1])
+            predict_s, predict_e = self.answer(session, dataset[i])
+            context_words = [vocab[w] for w in dataset[i][2]]
+            true_answer = ' '.join(context_words[true_s : true_e + 1])
+            predict_answer = ' '.join(context_words[predict_s : predict_e + 1])
+            f1 += f1_score(predict_answer, true_answer)
+            em += exact_match_score(predict_answer, true_answer)
+
+        f1 /= N
+        em /= N
+
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
 
@@ -410,26 +421,16 @@ class QASystem(object):
         if answer_batch is not None:
             feed_dict[self.answer_placeholders] = answer_batch
 
-    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
-        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        loss = 0.00
-        # TODO: set up loss
-        # _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
-        return loss
-
-    def run_epoch(self, session, training_set, validation_set):
-        # print (np.array(training_set[0]))
+    def run_epoch(self, session, training_set):
+        prog = Progbar(target=1 + int(len(tratraining_setin) / self.config.batch_size))
         for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
-            loss = self.train_on_batch(session, *batch)
+            loss = self.optimize(session, *batch)
+            prog.update(i + 1, [("train loss", loss)])
 
-        # TODO: Evaluate on training set
-        f1, em = self.evaluate_answer(session, training_set)
-        # TODO: Evaluate on validation set
-        f1, em = self.evaluate_answer(session, validation_set)
         return 0
 
 
-    def train(self, session, dataset, train_dir):
+    def train(self, session, dataset, train_dir, vocab):
         """
         Implement main training loop
 
@@ -468,11 +469,11 @@ class QASystem(object):
         training_set = dataset['training']
         validation_set = dataset['validation']
 
-        best_score = 0
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, training_set, validation_set)
-
+            score = self.run_epoch(session, training_set)
+            qa.evaluate_answer(session, dataset, vocab, sample=10, log=True)
+            qa.validate(session, validation_set)
             # Saving the model
             # saver = tf.train.Saver()
             # saver.save(session, train_dir)
