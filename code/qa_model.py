@@ -9,8 +9,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
-from utils.data_reader import minibatches
-from utils.util import ConfusionMatrix, Progbar
+from utils.util import ConfusionMatrix, Progbar, minibatches
 
 from evaluate import exact_match_score, f1_score
 
@@ -166,11 +165,11 @@ class QASystem(object):
         self.attention = Attention(config)
 
         # ==== set up placeholder tokens ========
-        self.question_placeholder = tf.placeholder(tf.int32, shape=(None, config.question_maxlen, config.n_features))
-        self.question_length_placeholder = tf.placeholder(tf.int32, shape=(None,))
-        self.context_placeholder = tf.placeholder(tf.int32, shape=(None, config.context_maxlen, config.n_features))
-        self.context_length_placeholder = tf.placeholder(tf.int32, shape=(None,))
-        self.answer_placeholders = tf.placeholder(tf.int32, shape=(None, config.answer_size))
+        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen, config.n_features))
+        self.question_length_placeholder = tf.placeholder(dtype=tf.int32, name="q_len", shape=(None,))
+        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
+        self.context_length_placeholder = tf.placeholder(dtype=tf.int32, name="c_len", shape=(None,))
+        self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
@@ -301,6 +300,12 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
+        print(len(training_set))
+        print(training_set[0].shape)
+        print(training_set[1].shape)
+        print(training_set[2].shape)
+        print(training_set[3].shape)
+        print(training_set[4].shape)
         question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
 
@@ -415,10 +420,11 @@ class QASystem(object):
         feed_dict[self.context_length_placeholder] = context_length_batch
         if answer_batch is not None:
             feed_dict[self.answer_placeholders] = answer_batch
+        return feed_dict
 
     def run_epoch(self, session, training_set):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
-        for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
+        for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
             loss = self.optimize(session, batch)
             prog.update(i + 1, [("train loss", loss)])
         print("")
