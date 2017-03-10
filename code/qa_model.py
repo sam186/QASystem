@@ -10,6 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
 from utils.data_reader import minibatches
+from utils.util import ConfusionMatrix, Progbar, minibatches
 
 from evaluate import exact_match_score, f1_score
 
@@ -61,6 +62,7 @@ class Attention(object):
         u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
         u_a = tf.reduce_sum(tf.multiply(a_x, u), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
         assert u_a.get_shape().as_list() == [None, JX, d_en]
+        logging.debug('Context with attention: %s' % str(u_a))
         return u_a
 
 class Encoder(object):
@@ -155,15 +157,13 @@ class QASystem(object):
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
-            # get embeddings for input
             self.q, self.x = self.setup_embeddings()
-            # pred from x and q
             self.pred = self.setup_system(self.x, self.q)
             self.loss = self.setup_loss(self.pred)
 
         # ==== set up training/updating procedure ====
         get_op = get_optimizer(self.config.optimizer)
-        train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
     def logistic_regression(self, X):
         """
@@ -294,64 +294,63 @@ class QASystem(object):
 
         return question_embeddings, context_embeddings
 
-    def optimize(self, session, train_x, train_y):
+    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
+        feed_dict = {}
+        print(question_batch.dtype, question_length_batch.dtype, context_batch.dtype, context_length_batch.dtype, answer_batch.dtype)
+        feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.question_length_placeholder] = question_length_batch
+        feed_dict[self.context_placeholder] = context_batch
+        feed_dict[self.context_length_placeholder] = context_length_batch
+        if answer_batch is not None:
+            feed_dict[self.answer_placeholders] = answer_batch
+
+    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
         """
         Takes in actual data to optimize your model
         This method is equivalent to a step() function
         :return:
         """
-        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        loss = 0.00
+        # TODO: set up loss
+        _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
+        return loss
+
+    # def test(self, session, valid_x, valid_y):
+    #     """
+    #     in here you should compute a cost for your validation set
+    #     and tune your hyperparameters according to the validation set performance
+    #     :return:
+    #     """
+    #     input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
         
-        # fill in this feed_dictionary like:
-        # input_feed['train_x'] = train_x
+    #     # fill in this feed_dictionary like:
+    #     # input_feed['valid_x'] = valid_x
 
-        output_feed = [self.train_op, self.loss]
+    #     output_feed = []
 
-        outputs = session.run(output_feed, input_feed)
+    #     outputs = session.run(output_feed, input_feed)
 
-        return outputs
+    #     return outputs
 
-    def test(self, session, valid_x, valid_y):
-        """
-        in here you should compute a cost for your validation set
-        and tune your hyperparameters according to the validation set performance
-        :return:
-        """
-        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        
-        # fill in this feed_dictionary like:
-        # input_feed['valid_x'] = valid_x
-
-        output_feed = []
-
-        outputs = session.run(output_feed, input_feed)
-
-        return outputs
-
-    def decode(self, session, test_x):
+    def predict_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
         """
         Returns the probability distribution over different positions in the paragraph
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        
+        feed_dict =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
 
-        # fill in this feed_dictionary like:
-        # input_feed['test_x'] = test_x
+        outputs = sess.run(self.pred, feed_dict)
 
-        output_feed = []
+        return outputs # [N, 2, JX]
 
-        outputs = session.run(output_feed, input_feed)
+    def answer_on_batch(self, sess, test_x):
 
-        return outputs
+        yp = self.predict_on_batch(sess, *test_x)
 
-    def answer(self, session, test_x):
-
-        yp, yp2 = self.decode(session, test_x)
-
-        a_s = np.argmax(yp, axis=1)
-        a_e = np.argmax(yp2, axis=1)
+        a_s = np.argmax(yp[:,0,:], axis=-1) #[N]
+        a_e = np.argmax(yp[:,1,:], axis=-1)
 
         return (a_s, a_e)
 
@@ -371,7 +370,6 @@ class QASystem(object):
 
         for valid_x, valid_y in valid_dataset:
           valid_cost = self.test(sess, valid_x, valid_y)
-
 
         return valid_cost
 
@@ -394,32 +392,24 @@ class QASystem(object):
         f1 = 0.
         em = 0.
 
+        for i, batch in enumerate(minibatches(np.array(dataset), self.config.batch_size)):
+            preds = self.answer_on_batch(session, batch)
+         
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
 
         return f1, em
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
-        feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_length_placeholder] = question_length_batch
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_length_placeholder] = context_length_batch
-        if answer_batch is not None:
-            feed_dict[self.answer_placeholders] = answer_batch
-
-    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
-        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        loss = 0.00
-        # TODO: set up loss
-        # _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
-        return loss
-
     def run_epoch(self, session, training_set, validation_set):
         # print (np.array(training_set[0]))
+        prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
             loss = self.train_on_batch(session, *batch)
+            prog.update(i + 1, [("train loss", loss)])
+            # if self.report: self.report.log_train_loss(loss)
+        print("")
 
+        logger.info("Evaluating on development data")
         # TODO: Evaluate on training set
         f1, em = self.evaluate_answer(session, training_set)
         # TODO: Evaluate on validation set
