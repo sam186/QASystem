@@ -110,3 +110,9 @@ Epoch 7 out of 10
 Epoch 8 out of 10
 Epoch 9 out of 10
 Epoch 10 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.606701 secs)
+Epoch 1 out of 10
