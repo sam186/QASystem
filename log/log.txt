@@ -160,3 +160,584 @@ Created model with fresh parameters.
 Num params: 963402
 Number of params: 963402 (retreival took 2.326427 secs)
 Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.435552 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.530136 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.518630 secs)
+Epoch 1 out of 10
+[array([[[   32],
+        [  138],
+        [56311],
+        [ 2282],
+        [   19],
+        [   18],
+        [    0],
+        [    0],
+        [    0],
+        [    0]],
+
+       [[   32],
+        [  138],
+        [ 1147],
+        [ 2773],
+        [ 3295],
+        [  527],
+        [   58],
+        [11055],
+        [   25],
+        [  420]],
+
+       [[  117],
+        [  151],
+        [    5],
+        [ 2087],
+        [   23],
+        [  349],
+        [   12],
+        [   62],
+        [   19],
+        [ 2041]],
+
+       [[  305],
+        [  138],
+        [    3],
+        [ 2392],
+        [ 2034],
+        [    5],
+        [    3],
+        [ 2387],
+        [ 1064],
+        [   18]],
+
+       [[  784],
+        [   10],
+        [  608],
+        [   38],
+        [ 4032],
+        [   21],
+        [   23],
+        [ 7755],
+        [    9],
+        [25645]],
+
+       [[   32],
+        [  278],
+        [    5],
+        [    3],
+        [ 1533],
+        [   13],
+        [  312],
+        [  591],
+        [    4],
+        [  369]],
+
+       [[   32],
+        [   12],
+        [   50],
+        [    5],
+        [    3],
+        [   53],
+        [  804],
+        [ 6292],
+        [  547],
+        [    8]],
+
+       [[  305],
+        [   48],
+        [ 9464],
+        [ 2374],
+        [    3],
+        [ 5657],
+        [   18],
+        [    0],
+        [    0],
+        [    0]],
+
+       [[   32],
+        [   48],
+        [ 1452],
+        [ 7212],
+        [    9],
+        [ 2221],
+        [   15],
+        [   10],
+        [  319],
+        [    5]],
+
+       [[   32],
+        [   13],
+        [ 6564],
+        [   23],
+        [ 6803],
+        [   18],
+        [    0],
+        [    0],
+        [    0],
+        [    0]]]), array([ 6, 13, 11, 10, 22, 11, 13,  7, 14,  6]), array([[[   14],
+        [  394],
+        [   38],
+        ..., 
+        [    0],
+        [    0],
+        [    0]],
+
+       [[ 1147],
+        [ 2773],
+        [ 5581],
+        ..., 
+        [    0],
+        [    0],
+        [    0]],
+
+       [[ 2087],
+        [ 3692],
+        [  735],
+        ..., 
+        [    0],
+        [    0],
+        [    0]],
+
+       ..., 
+       [[   28],
+        [  381],
+        [    4],
+        ..., 
+        [    0],
+        [    0],
+        [    0]],
+
+       [[   14],
+        [16461],
+        [17520],
+        ..., 
+        [    0],
+        [    0],
+        [    0]],
+
+       [[   14],
+        [ 3037],
+        [ 3368],
+        ..., 
+        [    0],
+        [    0],
+        [    0]]]), array([ 97, 103, 118, 173, 160, 116,  73, 252,  48, 152]), array([[ 41,  43],
+       [ 17,  17],
+       [108, 109],
+       [ 43,  47],
+       [ 76,  76],
+       [  1,   1],
+       [ 11,  13],
+       [235, 236],
+       [ 39,  46],
+       [  1,   1]])]
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.585637 secs)
+Epoch 1 out of 10
+[[[   32]
+  [  138]
+  [ 1147]
+  [ 2773]
+  [ 3295]
+  [  527]
+  [   58]
+  [11055]
+  [   25]
+  [  420]]
+
+ [[  253]
+  [  315]
+  [   12]
+  [  862]
+  [  686]
+  [ 1483]
+  [ 4715]
+  [   18]
+  [    0]
+  [    0]]
+
+ [[   32]
+  [   13]
+  [ 6564]
+  [   23]
+  [ 6803]
+  [   18]
+  [    0]
+  [    0]
+  [    0]
+  [    0]]
+
+ [[  117]
+  [  151]
+  [    5]
+  [ 2087]
+  [   23]
+  [  349]
+  [   12]
+  [   62]
+  [   19]
+  [ 2041]]
+
+ [[  115]
+  [  306]
+  [  870]
+  [   11]
+  [56224]
+  [  839]
+  [    8]
+  [    3]
+  [ 1903]
+  [   18]]
+
+ [[   32]
+  [   48]
+  [ 1452]
+  [ 7212]
+  [    9]
+  [ 2221]
+  [   15]
+  [   10]
+  [  319]
+  [    5]]
+
+ [[   32]
+  [   23]
+  [    3]
+  [  137]
+  [    5]
+  [    3]
+  [ 2524]
+  [  246]
+  [    8]
+  [   50]]
+
+ [[   32]
+  [  133]
+  [ 1555]
+  [   48]
+  [    3]
+  [  924]
+  [30070]
+  [ 1036]
+  [ 9918]
+  [   24]]
+
+ [[   32]
+  [  138]
+  [56311]
+  [ 2282]
+  [   19]
+  [   18]
+  [    0]
+  [    0]
+  [    0]
+  [    0]]
+
+ [[  305]
+  [   48]
+  [ 9464]
+  [ 2374]
+  [    3]
+  [ 5657]
+  [   18]
+  [    0]
+  [    0]
+  [    0]]]
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.467420 secs)
+Epoch 1 out of 10
+[[[   28]
+  [   56]
+  [  299]
+  [    5]
+  [  639]
+  [   26]
+  [ 4951]
+  [  669]
+  [ 8831]
+  [   18]]
+
+ [[  305]
+  [   48]
+  [ 9464]
+  [ 2374]
+  [    3]
+  [ 5657]
+  [   18]
+  [    0]
+  [    0]
+  [    0]]
+
+ [[   32]
+  [   23]
+  [    3]
+  [  137]
+  [    5]
+  [    3]
+  [ 2524]
+  [  246]
+  [    8]
+  [   50]]
+
+ [[ 1787]
+  [  816]
+  [   38]
+  [   42]
+  [  238]
+  [ 2210]
+  [   56]
+  [   18]
+  [    0]
+  [    0]]
+
+ [[   32]
+  [  133]
+  [ 1555]
+  [   48]
+  [    3]
+  [  924]
+  [30070]
+  [ 1036]
+  [ 9918]
+  [   24]]
+
+ [[   32]
+  [  278]
+  [    5]
+  [    3]
+  [ 1533]
+  [   13]
+  [  312]
+  [  591]
+  [    4]
+  [  369]]
+
+ [[   32]
+  [   12]
+  [   50]
+  [    5]
+  [    3]
+  [   53]
+  [  804]
+  [ 6292]
+  [  547]
+  [    8]]
+
+ [[   32]
+  [   48]
+  [ 1452]
+  [ 7212]
+  [    9]
+  [ 2221]
+  [   15]
+  [   10]
+  [  319]
+  [    5]]
+
+ [[  115]
+  [  520]
+  [    3]
+  [ 2560]
+  [    5]
+  [    3]
+  [20077]
+  [ 1051]
+  [   18]
+  [    0]]
+
+ [[  253]
+  [  315]
+  [   12]
+  [  862]
+  [  686]
+  [ 1483]
+  [ 4715]
+  [   18]
+  [    0]
+  [    0]]]
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.462411 secs)
+Epoch 1 out of 10
+[[[  115]
+  [  520]
+  [    3]
+  [ 2560]
+  [    5]
+  [    3]
+  [20077]
+  [ 1051]
+  [   18]
+  [    0]]
+
+ [[  253]
+  [  315]
+  [   12]
+  [  862]
+  [  686]
+  [ 1483]
+  [ 4715]
+  [   18]
+  [    0]
+  [    0]]
+
+ [[   28]
+  [   56]
+  [  299]
+  [    5]
+  [  639]
+  [   26]
+  [ 4951]
+  [  669]
+  [ 8831]
+  [   18]]
+
+ [[   32]
+  [  133]
+  [ 1555]
+  [   48]
+  [    3]
+  [  924]
+  [30070]
+  [ 1036]
+  [ 9918]
+  [   24]]
+
+ [[  305]
+  [  138]
+  [    3]
+  [ 2392]
+  [ 2034]
+  [    5]
+  [    3]
+  [ 2387]
+  [ 1064]
+  [   18]]
+
+ [[  305]
+  [   48]
+  [ 9464]
+  [ 2374]
+  [    3]
+  [ 5657]
+  [   18]
+  [    0]
+  [    0]
+  [    0]]
+
+ [[  784]
+  [   10]
+  [  608]
+  [   38]
+  [ 4032]
+  [   21]
+  [   23]
+  [ 7755]
+  [    9]
+  [25645]]
+
+ [[   32]
+  [  138]
+  [ 1147]
+  [ 2773]
+  [ 3295]
+  [  527]
+  [   58]
+  [11055]
+  [   25]
+  [  420]]
+
+ [[  253]
+  [  383]
+  [   48]
+  [    3]
+  [19108]
+  [    7]
+  [ 3763]
+  [ 2657]
+  [  156]
+  [   18]]
+
+ [[ 1787]
+  [  816]
+  [   38]
+  [   42]
+  [  238]
+  [ 2210]
+  [   56]
+  [   18]
+  [    0]
+  [    0]]]
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.588095 secs)
+Epoch 1 out of 10
+<type 'numpy.ndarray'>
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.483320 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.439266 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 3.388625 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 8.044459 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.493715 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.759133 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.500591 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.885772 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.595213 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.486438 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.447709 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.768519 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.445581 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.469670 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.541995 secs)
+Epoch 1 out of 10
