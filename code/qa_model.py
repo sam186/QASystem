@@ -10,7 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from operator import mul
 from tensorflow.python.ops import variable_scope as vs
-from utils.util import ConfusionMatrix, Progbar, minibatches
+from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot
 
 from evaluate import exact_match_score, f1_score
 
@@ -182,13 +182,16 @@ class QASystem(object):
         self.question_mask_placeholder = tf.placeholder(dtype=tf.int32, name="q_mask", shape=(None, config.question_maxlen, config.n_features))
         self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
         self.context_mask_placeholder = tf.placeholder(dtype=tf.int32, name="c_mask", shape=(None, config.context_maxlen, config.n_features))
-        self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
+        # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
+        self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None, config.context_maxlen))
+        self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None, config.context_maxlen))
+        
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
             self.q, self.x = self.setup_embeddings()
-            self.pred = self.setup_system(self.x, self.q)
-            self.loss = self.setup_loss(self.pred)
+            self.preds = self.setup_system(self.x, self.q)
+            self.loss = self.setup_loss(self.preds)
 
         # ==== set up training/updating procedure ====
         get_op = get_optimizer(self.config.optimizer)
@@ -210,19 +213,19 @@ class QASystem(object):
         X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 2), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 2), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
         
-        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
-        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
+        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
+        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
+        pred1 = tf.reshape(pred1, shape = [-1, JX, 2]) # -> [N, JX, 2]
+        pred2 = tf.reshape(pred2, shape = [-1, JX, 2]) # -> [N, JX, 2]
 
-        preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
-        assert preds.get_shape().as_list() == [None, 2, JX]
-        return preds
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
 
 
     def setup_system(self, x, q):
@@ -270,12 +273,10 @@ class QASystem(object):
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        preds = self.logistic_regression(context_attention_state)
-        assert d_ans == 2
-        assert preds.get_shape().as_list() == [None, d_ans, JX]
+        pred1, pred2 = self.logistic_regression(context_attention_state)
 
         # raise NotImplementedError("Connect all parts of your system here!")
-        return preds
+        return pred1, pred2
 
 
     def setup_loss(self, preds):
@@ -287,8 +288,11 @@ class QASystem(object):
         :return:
         """
         with vs.variable_scope("loss"):
-            loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(preds, self.answer_placeholders),)  
-        return loss
+            s, e = preds
+            loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+             
+        return loss1 + loss2
 
     def setup_embeddings(self):
         """
@@ -432,7 +436,12 @@ class QASystem(object):
         feed_dict[self.context_placeholder] = context_batch
         feed_dict[self.context_mask_placeholder] = context_mask_batch
         if answer_batch is not None:
-            feed_dict[self.answer_placeholders] = answer_batch
+            start = answer_batch[:,0]
+            end = answer_batch[:,1]
+            start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
+            end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
+            feed_dict[self.answer_start_placeholders] = start_one_hot
+            feed_dict[self.answer_end_placeholders] = end_one_hot
         return feed_dict
 
     def run_epoch(self, session, training_set):
