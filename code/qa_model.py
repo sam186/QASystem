@@ -174,15 +174,13 @@ class QASystem(object):
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
-            # get embeddings for input
             self.q, self.x = self.setup_embeddings()
-            # pred from x and q
             self.pred = self.setup_system(self.x, self.q)
             self.loss = self.setup_loss(self.pred)
 
         # ==== set up training/updating procedure ====
         get_op = get_optimizer(self.config.optimizer)
-        train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
 
     def logistic_regression(self, X):
@@ -320,9 +318,6 @@ class QASystem(object):
         """
         question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = validation_set
         input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        
-        # fill in this feed_dictionary like:
-        # input_feed['valid_x'] = valid_x
 
         output_feed = [self.loss]
         outputs = session.run(output_feed, input_feed)
@@ -422,11 +417,11 @@ class QASystem(object):
             feed_dict[self.answer_placeholders] = answer_batch
 
     def run_epoch(self, session, training_set):
-        prog = Progbar(target=1 + int(len(tratraining_setin) / self.config.batch_size))
+        prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
-            loss = self.optimize(session, *batch)
+            loss = self.optimize(session, batch)
             prog.update(i + 1, [("train loss", loss)])
-
+        print("")
         return 0
 
 
@@ -472,8 +467,8 @@ class QASystem(object):
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
-            qa.evaluate_answer(session, dataset, vocab, sample=10, log=True)
-            qa.validate(session, validation_set)
+            self.evaluate_answer(session, dataset, vocab, sample=10, log=True)
+            self.validate(session, validation_set)
             # Saving the model
             # saver = tf.train.Saver()
             # saver.save(session, train_dir)
