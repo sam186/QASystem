@@ -10,7 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from tensorflow.python.ops import variable_scope as vs
 from utils.data_reader import minibatches
-from utils.util import ConfusionMatrix, Progbar, minibatches
+from utils.util import ConfusionMatrix, Progbar
 
 from evaluate import exact_match_score, f1_score
 
@@ -47,6 +47,9 @@ class Attention(object):
 
         :return: [N, JX, d_com]
         """
+        logging.debug('-'*5 + 'attention' + '-'*5)
+        logging.debug('Context representation: %s' % str(h))
+        logging.debug('Question representation: %s' % str(u))
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         d_en = h.get_shape().as_list()[-1]
         assert h.get_shape().as_list() == [None, JX, d_en]
@@ -83,6 +86,8 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
+
+        logging.debug('-'*5 + 'encode' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
         # Backward direction cell
@@ -93,6 +98,7 @@ class Encoder(object):
         if encoder_state_input is not None:
             initial_state_fw, initial_state_bw = encoder_state_input
 
+        logging.debug('Inputs: %s' % str(inputs))
 
         # Get lstm cell output
         outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
@@ -105,10 +111,14 @@ class Encoder(object):
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
+
+        logging.debug('fw hidden state: %s' % str(outputs[0]))
         hidden_state = tf.concat(2, outputs)
+        logging.debug('Concatenated bi-LSTM hidden state: %s' % str(hidden_state))
         # final_state_fw and final_state_bw are the final states of the forwards/backwards LSTM
         (final_state_fw, final_state_bw) = final_output_states
         concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
+        logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
         return hidden_state, concat_final_state, final_output_states
 
 
@@ -128,10 +138,17 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
-        lstm_cell = tf.rnn.BasicLSTMCell(self.output_size, state_is_tuple=True)
-        (output, _) = tf.nn.dynamic_rnn(lstm_cell, lstm_cell, inputs=knowledge_rep, dtype=tf.float32)
-
-        return output
+        logging.debug('-'*5 + 'decode' + '-'*5)
+        logging.debug('Input knowledge_rep: %s' % str(knowledge_rep))
+        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=1, state_is_tuple=True)
+        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float64)
+        logging.debug('Hidden state: %s' % str(hidden_states))
+        xavier_initializer=tf.contrib.layers.xavier_initializer()
+        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float64)
+        preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
+        start_idx = 0
+        end_idx = 0
+        return start_idxend_idxend
 
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
@@ -165,6 +182,7 @@ class QASystem(object):
         get_op = get_optimizer(self.config.optimizer)
         self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
+
     def logistic_regression(self, X):
         """
         With any kind of representation, do 2 independent classifications
@@ -180,11 +198,10 @@ class QASystem(object):
         X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1))
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,))
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1))
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,))
-
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
@@ -214,23 +231,16 @@ class QASystem(object):
         
         assert self.q.get_shape().as_list() == [None, JQ, d] 
 
+        # Step 1: encode x and q, respectively, with independent weights
+        #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
+        #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+        with tf.variable_scope('q'):
+            question_sentence_repr, question_repr, question_state = \
+                 self.encoder.encode(inputs=q, sequence_length=self.question_length_placeholder, encoder_state_input=None)
 
-        # Step 1: encode x and q
-        #         e.g. h = encode_context(x)   # get H (2d*T) as representation of x
-        #         e.g. u = encode_question(q)  # get U (2d*J) as representation of q
-        h = x
-        u = q
-        # with tf.variable_scope('q'):
-        #     question_sentence_repr, question_repr, question_state = \
-        #          self.encoder.encode(inputs=q, sequence_length=self.question_length_placeholder, encoder_state_input=None)
-
-        # with tf.variable_scope('c'):
-        #     context_sentence_repr, context_repr, context_state =\
-        #          self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
-
-        d_en = d
-        assert h.get_shape().as_list() == [None, JX, d_en] 
-        assert u.get_shape().as_list() == [None, JQ, d_en] 
+        with tf.variable_scope('c'):
+            context_sentence_repr, context_repr, context_state =\
+                 self.encoder.encode(inputs=x, sequence_length=self.context_length_placeholder, encoder_state_input=question_state)
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -238,26 +248,17 @@ class QASystem(object):
         #              a_q = softmax(S.T)
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
-        d_com = d_en
-        g0 = self.attention.calculate(h, u)
-        assert g0.get_shape().as_list() == [None, JX, d_com] 
+
+        context_attention_state = self.attention.calculate(context_sentence_repr, question_sentence_repr)
 
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
-        g1 = g0
-        d_en2 = d_com
-        assert g1.get_shape().as_list() == [None, JX, d_en2] 
-        
 
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        # answer_start, answer_end = self.decoder.decode(context_attention_state)
-
-
-        
-        preds = self.logistic_regression(g1)
+        preds = self.logistic_regression(context_attention_state)
         assert d_ans == 2
         assert preds.get_shape().as_list() == [None, d_ans, JX]
 
@@ -286,7 +287,7 @@ class QASystem(object):
             if self.config.RE_TRAIN_EMBED:
                 pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
             else:
-                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
+                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float64)
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
@@ -294,63 +295,57 @@ class QASystem(object):
 
         return question_embeddings, context_embeddings
 
-    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
-        feed_dict = {}
-        print(question_batch.dtype, question_length_batch.dtype, context_batch.dtype, context_length_batch.dtype, answer_batch.dtype)
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_length_placeholder] = question_length_batch
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_length_placeholder] = context_length_batch
-        if answer_batch is not None:
-            feed_dict[self.answer_placeholders] = answer_batch
-
-    def train_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
+    def optimize(self, session, training_set):
         """
         Takes in actual data to optimize your model
         This method is equivalent to a step() function
         :return:
         """
-        feed_dict = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        loss = 0.00
-        # TODO: set up loss
-        _, loss = sess.run([self.train_op, self.loss], feed_dict=feed_dict)
-        return loss
+        question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = training_set
+        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
 
-    # def test(self, session, valid_x, valid_y):
-    #     """
-    #     in here you should compute a cost for your validation set
-    #     and tune your hyperparameters according to the validation set performance
-    #     :return:
-    #     """
-    #     input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
-        
-    #     # fill in this feed_dictionary like:
-    #     # input_feed['valid_x'] = valid_x
+        output_feed = [self.train_op, self.loss]
 
-    #     output_feed = []
+        outputs = session.run(output_feed, input_feed)
 
-    #     outputs = session.run(output_feed, input_feed)
+        return outputs
 
-    #     return outputs
+    def test(self, session, validation_set):
+        """
+        in here you should compute a cost for your validation set
+        and tune your hyperparameters according to the validation set performance
+        :return:
+        """
+        question_batch, question_length_batch, context_batch, context_length_batch, answer_batch = validation_set
+        input_feed = self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
 
-    def predict_on_batch(self, sess, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch):
+        output_feed = [self.loss]
+        outputs = session.run(output_feed, input_feed)
+        return outputs
+
+    def decode(self, session, test_x):
         """
         Returns the probability distribution over different positions in the paragraph
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        feed_dict =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=answer_batch)
+        input_feed =  self.create_feed_dict(question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None)
+        
+        # fill in this feed_dictionary like:
+        # input_feed['test_x'] = test_x
 
-        outputs = sess.run(self.pred, feed_dict)
+        output_feed = [self.answer_placeholders]
 
-        return outputs # [N, 2, JX]
+        outputs = session.run(output_feed, input_feed)
 
-    def answer_on_batch(self, sess, test_x):
+        return outputs
 
-        yp = self.predict_on_batch(sess, *test_x)
+    def answer(self, session, test_x):
 
-        a_s = np.argmax(yp[:,0,:], axis=-1) #[N]
-        a_e = np.argmax(yp[:,1,:], axis=-1)
+        yp, yp2 = self.decode(session, test_x)
+
+        a_s = np.argmax(yp, axis=1)
+        a_e = np.argmax(yp2, axis=1)
 
         return (a_s, a_e)
 
@@ -366,14 +361,13 @@ class QASystem(object):
 
         :return:
         """
-        valid_cost = 0
+        valid_cost = self.test(sess, valid_dataset)
 
-        for valid_x, valid_y in valid_dataset:
-          valid_cost = self.test(sess, valid_x, valid_y)
+        # TODO: set up validation cost
 
         return valid_cost
 
-    def evaluate_answer(self, session, dataset, sample=100, log=False):
+    def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
         """
         Evaluate the model's performance using the harmonic mean of F1 and Exact Match (EM)
         with the set of true answer labels
@@ -392,32 +386,46 @@ class QASystem(object):
         f1 = 0.
         em = 0.
 
-        for i, batch in enumerate(minibatches(np.array(dataset), self.config.batch_size)):
-            preds = self.answer_on_batch(session, batch)
-         
+        N = len(dataset)
+        sampleIndices = np.random.choice(N, sample)
+
+        for i in sampleIndices:
+            true_s = int(dataset[i][-1][0])
+            true_e = int(dataset[i][-1][1])
+            predict_s, predict_e = self.answer(session, dataset[i])
+            context_words = [vocab[w] for w in dataset[i][2]]
+            true_answer = ' '.join(context_words[true_s : true_e + 1])
+            predict_answer = ' '.join(context_words[predict_s : predict_e + 1])
+            f1 += f1_score(predict_answer, true_answer)
+            em += exact_match_score(predict_answer, true_answer)
+
+        f1 /= N
+        em /= N
+
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
 
         return f1, em
 
-    def run_epoch(self, session, training_set, validation_set):
-        # print (np.array(training_set[0]))
+    def create_feed_dict(self, question_batch, question_length_batch, context_batch, context_length_batch, answer_batch=None):
+        feed_dict = {}
+        feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.question_length_placeholder] = question_length_batch
+        feed_dict[self.context_placeholder] = context_batch
+        feed_dict[self.context_length_placeholder] = context_length_batch
+        if answer_batch is not None:
+            feed_dict[self.answer_placeholders] = answer_batch
+
+    def run_epoch(self, session, training_set):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(np.array(training_set), self.config.batch_size)):
-            loss = self.train_on_batch(session, *batch)
+            loss = self.optimize(session, batch)
             prog.update(i + 1, [("train loss", loss)])
-            # if self.report: self.report.log_train_loss(loss)
         print("")
-
-        logger.info("Evaluating on development data")
-        # TODO: Evaluate on training set
-        f1, em = self.evaluate_answer(session, training_set)
-        # TODO: Evaluate on validation set
-        f1, em = self.evaluate_answer(session, validation_set)
         return 0
 
 
-    def train(self, session, dataset, train_dir):
+    def train(self, session, dataset, train_dir, vocab):
         """
         Implement main training loop
 
@@ -456,11 +464,11 @@ class QASystem(object):
         training_set = dataset['training']
         validation_set = dataset['validation']
 
-        best_score = 0
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, training_set, validation_set)
-
+            score = self.run_epoch(session, training_set)
+            self.evaluate_answer(session, dataset, vocab, sample=10, log=True)
+            self.validate(session, validation_set)
             # Saving the model
             # saver = tf.train.Saver()
             # saver.save(session, train_dir)
