@@ -741,3 +741,11 @@ Created model with fresh parameters.
 Num params: 963402
 Number of params: 963402 (retreival took 1.541995 secs)
 Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.539509 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 963402
+Number of params: 963402 (retreival took 1.480455 secs)
+Epoch 1 out of 10

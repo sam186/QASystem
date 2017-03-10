@@ -290,7 +290,7 @@ class QASystem(object):
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
-            context_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size * self.config.n_features])
+            context_embeddings = tf.reshape(context_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size * self.config.n_features])
 
         return question_embeddings, context_embeddings
 
