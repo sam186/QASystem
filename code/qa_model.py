@@ -16,15 +16,26 @@ from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
 
-
-def get_optimizer(opt):
+def get_optimizer(opt, loss, max_grad_norm, learning_rate):
     if opt == "adam":
-        optfn = tf.train.AdamOptimizer
+        optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
     elif opt == "sgd":
-        optfn = tf.train.GradientDescentOptimizer
+        optfn = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
     else:
         assert (False)
-    return optfn
+
+    grads_and_vars = optfn.compute_gradients(loss)
+    variables = [output[1] for output in grads_and_vars]
+    gradients = [output[0] for output in grads_and_vars]
+
+    gradients = tf.clip_by_global_norm(gradients, clip_norm=max_grad_norm)[0]
+    #gradients = tmp_gradients
+
+    grads_and_vars = [(gradients[i], variables[i]) for i in range(len(gradients))]
+
+    train_op = optfn.apply_gradients(grads_and_vars)
+
+    return train_op
 
 
 class Attention(object):
@@ -224,8 +235,9 @@ class QASystem(object):
             self.loss = self.setup_loss(self.preds)
 
         # ==== set up training/updating procedure ====
-        get_op = get_optimizer(self.config.optimizer)
-        self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        global_step = tf.Variable(0, trainable=False)
+        learning_rate = tf.train.exponential_decay(config.learning_rate, global_step, 100000, 0.96, staircase=True)
+        self.train_op = get_optimizer("adam", self.loss, config.max_gradient_norm, learning_rate)
 
     def setup_system(self, x, q):
         """
