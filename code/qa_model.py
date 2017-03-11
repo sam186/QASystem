@@ -430,10 +430,12 @@ class QASystem(object):
 
         N = len(dataset)
         sampleIndices = np.random.choice(N, sample)
-        data = [dataset[i] for i in sampleIndices]
-        batch = [np.array(col) for col in zip(*data)]
-        preds = self.answer(session, batch)
-        predict_s, predict_e = preds
+        evaluate_set = [dataset[i] for i in sampleIndices]
+        predict_s, predict_e = [], []
+        for i, batch in enumerate(minibatches(evaluate_set, self.config.batch_size)):
+            s, e = self.answer(session, batch)
+            predict_s.extend(s)
+            predict_e.extend(e)
 
         for i, s, e in zip(sampleIndices, predict_s, predict_e):
             true_s = int(dataset[i][-1][0])
@@ -523,8 +525,8 @@ class QASystem(object):
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
-            self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
-            self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
+            self.evaluate_answer(session, training_set, vocab, sample=20, log=True)
+            self.evaluate_answer(session, validation_set, vocab, sample=20, log=True)
             # self.validate(session, validation_set)
             # Saving the model
             saver = tf.train.Saver()
