@@ -208,8 +208,8 @@ class QASystem(object):
             pred: [N, 2, JX]
         """
         JX = self.config.context_maxlen
-        d = self.x.get_shape().as_list()[-1]
-        assert self.x.get_shape().as_list() == [None, JX, d] 
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
 
         X = tf.reshape(X, shape = [-1, d])
 
@@ -255,7 +255,8 @@ class QASystem(object):
 
         with tf.variable_scope('c'):
             context_sentence_repr, context_repr, context_state =\
-                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
+                 # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
         
         d_en = 4*d
         # ---------- opt2 ------------
