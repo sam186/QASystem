@@ -184,8 +184,8 @@ class QASystem(object):
         self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
         self.context_mask_placeholder = tf.placeholder(dtype=tf.int32, name="c_mask", shape=(None, config.context_maxlen, config.n_features))
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
-        self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None, config.context_maxlen))
-        self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None, config.context_maxlen))
+        self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
+        self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None,))
         
 
         # ==== assemble pieces ====
@@ -255,8 +255,8 @@ class QASystem(object):
 
         with tf.variable_scope('c'):
             context_sentence_repr, context_repr, context_state =\
-                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
-                 # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+                 # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         
         d_en = 4*d
         # ---------- opt2 ------------
@@ -302,14 +302,14 @@ class QASystem(object):
             s, e = preds
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
-            assert self.answer_start_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_start_placeholders.get_shape().as_list())
-            assert self.answer_end_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
+            # assert self.answer_start_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_start_placeholders.get_shape().as_list())
+            # assert self.answer_end_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
             # loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(preds, self.answer_placeholders),)  
-            # loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
-            # loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
 
-            loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
-            loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
             
              
         return loss1 + loss2
@@ -436,7 +436,7 @@ class QASystem(object):
             true_answer = ' '.join(context_words[true_s : true_e + 1])
             # print(s)
             # print(e)
-            if s < e:
+            if s <= e:
                 predict_answer = ' '.join(context_words[s : e + 1])
             else:
                 predict_answer = ''
@@ -460,10 +460,10 @@ class QASystem(object):
         if answer_batch is not None:
             start = answer_batch[:,0]
             end = answer_batch[:,1]
-            start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
-            end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
-            feed_dict[self.answer_start_placeholders] = start_one_hot
-            feed_dict[self.answer_end_placeholders] = end_one_hot
+            # start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
+            # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
+            feed_dict[self.answer_start_placeholders] = start
+            feed_dict[self.answer_end_placeholders] = end
         return feed_dict
 
     def run_epoch(self, session, training_set):

@@ -61,7 +61,7 @@ def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
     config = Config(data_dir)
 
     if debug:
-        debug_train_samples = 20
+        debug_train_samples = 49
         debug_val_samples = 10
 
     train = []
