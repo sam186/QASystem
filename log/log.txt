@@ -14,3 +14,26 @@ F1: 0.0204081632653, EM: 0.0204081632653, for 10 samples
 Epoch 2 out of 10
 F1: 0.0, EM: 0.0, for 10 samples
 Epoch 3 out of 10
+Created model with fresh parameters.
+Num params: 1925602
+Number of params: 1925602 (retreival took 2.011989 secs)
+Epoch 1 out of 10
+F1: 0.000600240096038, EM: 0.0, for 10 samples
+Epoch 2 out of 10
+F1: 0.000526662277814, EM: 0.0, for 10 samples
+Epoch 3 out of 10
+F1: 0.0, EM: 0.0, for 10 samples
+Epoch 4 out of 10
+F1: 0.0, EM: 0.0, for 10 samples
+Epoch 5 out of 10
+F1: 0.0290010741139, EM: 0.0204081632653, for 10 samples
+Epoch 6 out of 10
+F1: 0.0333352714305, EM: 0.0204081632653, for 10 samples
+Epoch 7 out of 10
+F1: 0.0221245421245, EM: 0.0204081632653, for 10 samples
+Epoch 8 out of 10
+F1: 0.0114166924168, EM: 0.0, for 10 samples
+Epoch 9 out of 10
+F1: 0.0862533692722, EM: 0.0816326530612, for 10 samples
+Epoch 10 out of 10
+F1: 0.0218403150734, EM: 0.0204081632653, for 10 samples
