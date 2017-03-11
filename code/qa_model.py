@@ -436,7 +436,7 @@ class QASystem(object):
             true_answer = ' '.join(context_words[true_s : true_e + 1])
             # print(s)
             # print(e)
-            if s < e:
+            if s <= e:
                 predict_answer = ' '.join(context_words[s : e + 1])
             else:
                 predict_answer = ''
