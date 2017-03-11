@@ -160,7 +160,7 @@ class Decoder(object):
         preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
         start_idx = 0
         end_idx = 0
-        return start_idxend_idxend
+        return start_idx, end_idx
 
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
@@ -213,15 +213,15 @@ class QASystem(object):
         X = tf.reshape(X, shape = [-1, 4*d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 2), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 2), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 1), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 1), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         
-        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
-        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
-        pred1 = tf.reshape(pred1, shape = [-1, JX, 2]) # -> [N, JX, 2]
-        pred2 = tf.reshape(pred2, shape = [-1, JX, 2]) # -> [N, JX, 2]
+        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred1 = tf.reshape(pred1, shape = [-1, JX, 1]) # -> [N, JX, 1]
+        pred2 = tf.reshape(pred2, shape = [-1, JX, 1]) # -> [N, JX, 1]
 
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
@@ -351,7 +351,7 @@ class QASystem(object):
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
 
-        output_feed = [self.answer_start_placeholders, self.answer_end_placeholders]
+        output_feed = [self.preds[0], self.preds[1]]
 
         outputs = session.run(output_feed, input_feed)
 
@@ -406,17 +406,19 @@ class QASystem(object):
         sampleIndices = np.random.choice(N, sample)
         data = [dataset[i] for i in sampleIndices]
         batch = [np.array(col) for col in zip(*data)]
-        print(batch)
-        predict_s, predict_e = self.answer(session, batch)
+        preds = self.answer(session, batch)
 
-        for i in sampleIndices:
+        for i, s, e in zip(sampleIndices, predict_s, predict_e):
             true_s = int(dataset[i][-1][0])
             true_e = int(dataset[i][-1][1])
-            s = predict_s[i]
-            e = predict_e[i]
-            context_words = [vocab[w] for w in dataset[i][2]]
+            context_words = [vocab[w[0]] for w in dataset[i][2]]
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            predict_answer = ' '.join(context_words[predict_s : predict_e + 1])
+            print(s)
+            print(e)
+            if s < e:
+                predict_answer = ' '.join(context_words[s : e + 1])
+            else:
+                predict_answer = ''
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
 
