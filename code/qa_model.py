@@ -469,9 +469,8 @@ class QASystem(object):
     def run_epoch(self, session, training_set):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            loss = self.optimize(session, batch)
-            print(loss)
-            prog.update(i + 1)
+            _, loss = self.optimize(session, batch)
+            prog.update(i + 1, [("training loss", loss)])
         print("")
         return 0
 
