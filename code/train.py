@@ -34,8 +34,8 @@ tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicate
 tf.app.flags.DEFINE_string("vocab_path", "data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{embedding_size}.npz)")
 
-tf.app.flags.DEFINE_string("question_maxlen", 10, "Max length of question (default: 30")
-tf.app.flags.DEFINE_string("context_maxlen", 300, "Max length of the context (default: 400)")
+tf.app.flags.DEFINE_string("question_maxlen", 38, "Max length of question (default: 30")
+tf.app.flags.DEFINE_string("context_maxlen", 766, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
 
@@ -87,7 +87,7 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    dataset = read_data(FLAGS.data_dir, question_maxlen=FLAGS.question_maxlen, context_maxlen=FLAGS.context_maxlen , debug=True)
+    dataset = read_data(FLAGS.data_dir, debug=True)
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
