@@ -210,12 +210,12 @@ class QASystem(object):
         d = self.x.get_shape().as_list()[-1]
         assert self.x.get_shape().as_list() == [None, JX, d] 
 
-        X = tf.reshape(X, shape = [-1, d])
+        X = tf.reshape(X, shape = [-1, 4*d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 2), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 2), dtype=tf.float64)
         b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 2), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 2), dtype=tf.float64)
         b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
         
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
@@ -317,12 +317,6 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        print(len(training_set))
-        print(training_set[0].shape)
-        print(training_set[1].shape)
-        print(training_set[2].shape)
-        print(training_set[3].shape)
-        print(training_set[4].shape)
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
@@ -345,18 +339,19 @@ class QASystem(object):
         outputs = session.run(output_feed, input_feed)
         return outputs
 
-    def decode(self, session, test_x):
+    def decode(self, session, test_sample):
         """
         Returns the probability distribution over different positions in the paragraph
         so that other methods like self.answer() will be able to work properly
         :return:
         """
+        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = test_sample
         input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None)
         
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
 
-        output_feed = [self.answer_placeholders]
+        output_feed = [self.answer_start_placeholders, self.answer_end_placeholders]
 
         outputs = session.run(output_feed, input_feed)
 
@@ -448,7 +443,8 @@ class QASystem(object):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
             loss = self.optimize(session, batch)
-            prog.update(i + 1, [("train loss", loss)])
+            print(loss)
+            prog.update(i + 1)
         print("")
         return 0
 
@@ -495,7 +491,7 @@ class QASystem(object):
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
-            self.evaluate_answer(session, dataset, vocab, sample=10, log=True)
+            self.evaluate_answer(session, training_set, vocab, sample=10, log=True)
             self.validate(session, validation_set)
             # Saving the model
             # saver = tf.train.Saver()
