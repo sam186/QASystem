@@ -238,7 +238,7 @@ class QASystem(object):
         :return:
         """
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
-        d = self.x.get_shape().as_list()[-1] # self.config.embedding_size * self.config.n_features
+        d = x.get_shape().as_list()[-1] # self.config.embedding_size * self.config.n_features
         d_ans = self.config.answer_size
         # Args:
             #   self.x: [None, JX, d]
