@@ -225,8 +225,6 @@ class QASystem(object):
 
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
-        assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
-        assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         return pred1, pred2
 
 
@@ -244,9 +242,8 @@ class QASystem(object):
         # Args:
             #   self.x: [None, JX, d]
             #   self.q: [None, JQ, d]
-        assert self.x.get_shape().as_list() == [None, JX, d], "Expected {}, got {}".format([None, JX, d], self.x.get_shape().as_list())
-        
-        assert self.q.get_shape().as_list() == [None, JQ, d] 
+        assert x.get_shape().as_list() == [None, JX, d], "Expected {}, got {}".format([None, JX, d], x.get_shape().as_list())
+        assert q.get_shape().as_list() == [None, JQ, d], "Expected {}, got {}".format([None, JX, d], q.get_shape().as_list())
 
         # Step 1: encode x and q, respectively, with independent weights
         #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
@@ -258,6 +255,16 @@ class QASystem(object):
         with tf.variable_scope('c'):
             context_sentence_repr, context_repr, context_state =\
                  self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+        
+        d_en = 4*d
+        # ---------- opt2 ------------
+        d_en = d
+        context_sentence_repr = x
+        question_sentence_repr = q
+        # -------- opt2 end ---------- 
+        assert context_sentence_repr.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], context_sentence_repr.get_shape().as_list())
+        assert question_sentence_repr.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], question_sentence_repr.get_shape().as_list())
+
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -265,28 +272,17 @@ class QASystem(object):
         #              a_q = softmax(S.T)
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
-        
-        # assert context_sentence_repr.get_shape().as_list() == [10, JX, d_en], "Expected {}, got {}".format([10, JX, d_en], context_sentence_repr.get_shape().as_list())
-        print(context_sentence_repr)
-        print(x)
-        # opt1
-        d_en = 4*d
         context_attention_state = self.attention.calculate(context_sentence_repr, question_sentence_repr)
-        # opt2
-        # d_en = d
-        # context_attention_state = self.attention.calculate(x, q)
+
         d_com = d_en
         assert context_attention_state.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([10, JX, d_com], context_attention_state.get_shape().as_list())
-        
-        # Step 3: further encode
-        #         e.g. G = f(H, U, H_hat, U_hat)
 
-
-        # Step 4: decode
+        # Step 3: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
         pred1, pred2 = self.logistic_regression(context_attention_state)
-
+        assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
+        assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
         return pred1, pred2
 
