@@ -92,8 +92,6 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-
-
     def encode(self, inputs, mask, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
@@ -330,7 +328,7 @@ class QASystem(object):
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
             
              
-        return tf.reduce_mean(loss1 + loss2)
+        return loss1 + loss2
 
     def setup_embeddings(self):
         """
