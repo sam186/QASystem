@@ -973,3 +973,63 @@ Created model with fresh parameters.
 Num params: 964804
 Number of params: 964804 (retreival took 1.480610 secs)
 Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.546475 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.537794 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.551670 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.541499 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.847768 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.567002 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.407504 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.595060 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.575656 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.903936 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 2.106378 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.432977 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.409363 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.463767 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.469230 secs)
+Epoch 1 out of 10
