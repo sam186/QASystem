@@ -16,6 +16,18 @@ from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
 
+def variable_summaries(var):
+  """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean', mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev', stddev)
+    tf.summary.scalar('max', tf.reduce_max(var))
+    tf.summary.scalar('min', tf.reduce_min(var))
+    tf.summary.histogram('histogram', var)
+
 def get_optimizer(opt, loss, max_grad_norm, learning_rate):
     if opt == "adam":
         optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -191,7 +203,10 @@ class Decoder(object):
         b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
         b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        
+        variable_summaries(W1)
+        variable_summaries(b1)
+        variable_summaries(W2)
+        variable_summaries(b2)
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
@@ -326,9 +341,9 @@ class QASystem(object):
 
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
-            
-             
-        return loss1 + loss2
+        loss = loss1 + loss2
+        tf.summary.scalar('loss', loss)
+        return loss
 
     def setup_embeddings(self):
         """
