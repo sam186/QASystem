@@ -530,4 +530,4 @@ class QASystem(object):
             # self.validate(session, validation_set)
             # Saving the model
             saver = tf.train.Saver()
-            saver.save(session, train_dir)
+            saver.save(session, train_dir+'/fancier_model')
