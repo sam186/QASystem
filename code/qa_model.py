@@ -251,6 +251,7 @@ class QASystem(object):
         global_step = tf.Variable(0, trainable=False)
         learning_rate = tf.train.exponential_decay(config.learning_rate, global_step, 100000, 0.96, staircase=True)
         self.train_op = get_optimizer("adam", self.loss, config.max_gradient_norm, learning_rate)
+        self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
         """
@@ -371,10 +372,9 @@ class QASystem(object):
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
-        output_feed = [self.train_op, self.loss]
+        output_feed = [self.train_op, self.merged, self.loss]
 
         outputs = session.run(output_feed, input_feed)
-
         return outputs
 
     def test(self, session, validation_set):
@@ -502,7 +502,8 @@ class QASystem(object):
     def run_epoch(self, session, training_set):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            _, loss = self.optimize(session, batch)
+            _, summary, loss = self.optimize(session, batch)
+            self.train_writer.add_summary(summary, i)
             prog.update(i + 1, [("training loss", loss)])
         print("")
         return 0
@@ -547,6 +548,7 @@ class QASystem(object):
         training_set = dataset['training']
         validation_set = dataset['validation']
 
+        self.train_writer = tf.summary.FileWriter(self.config.log_dir + '/train', session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
