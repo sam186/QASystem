@@ -123,8 +123,8 @@ class Encoder(object):
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
-        outputs_fw = tf.Print(outputs_fw, [outputs_fw])
-        final_state_fw = tf.Print(final_state_fw, [final_state_fw])
+        # outputs_fw = tf.Print(outputs_fw, [outputs_fw])
+        # final_state_fw = tf.Print(final_state_fw, [final_state_fw])
 
         logging.debug('fw hidden state: %s' % str(outputs_fw))
         hidden_state = tf.concat(2, [outputs_fw, outputs_bw])
