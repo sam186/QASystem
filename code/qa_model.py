@@ -10,7 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from operator import mul
 from tensorflow.python.ops import variable_scope as vs
-from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot
+from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot, minibatch
 
 from evaluate import exact_match_score, f1_score
 
@@ -113,7 +113,7 @@ class Encoder(object):
         flat_len = tf.cast(flatten(sequence_length, 0), 'int32')
         logging.debug('flat_len: %s' % str(flat_len))
         # Get lstm cell output
-        outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
+        (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
                                                       inputs=inputs,\
                                                       sequence_length=flat_len,
@@ -124,14 +124,13 @@ class Encoder(object):
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
 
-        logging.debug('fw hidden state: %s' % str(outputs[0]))
-        hidden_state = tf.concat(2, outputs)
+        logging.debug('fw hidden state: %s' % str(outputs_fw))
+        hidden_state = tf.concat(2, [outputs_fw, outputs_bw])
         logging.debug('Concatenated bi-LSTM hidden state: %s' % str(hidden_state))
         # final_state_fw and final_state_bw are the final states of the forwards/backwards LSTM
-        (final_state_fw, final_state_bw) = final_output_states
         concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
         logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
-        return hidden_state, concat_final_state, final_output_states
+        return hidden_state, concat_final_state, (final_state_fw, final_state_bw)
 
 
 class Decoder(object):
@@ -160,7 +159,7 @@ class Decoder(object):
         preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
         start_idx = 0
         end_idx = 0
-        return start_idxend_idxend
+        return start_idx, end_idx
 
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
@@ -207,21 +206,21 @@ class QASystem(object):
             pred: [N, 2, JX]
         """
         JX = self.config.context_maxlen
-        d = self.x.get_shape().as_list()[-1]
-        assert self.x.get_shape().as_list() == [None, JX, d] 
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
 
-        X = tf.reshape(X, shape = [-1, 4*d])
+        X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 2), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 2), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(2,), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         
-        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
-        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 2] +[2,] -> [N*JX, 2]
-        pred1 = tf.reshape(pred1, shape = [-1, JX, 2]) # -> [N, JX, 2]
-        pred2 = tf.reshape(pred2, shape = [-1, JX, 2]) # -> [N, JX, 2]
+        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
+        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
@@ -243,8 +242,7 @@ class QASystem(object):
             #   self.x: [None, JX, d]
             #   self.q: [None, JQ, d]
         assert x.get_shape().as_list() == [None, JX, d], "Expected {}, got {}".format([None, JX, d], x.get_shape().as_list())
-        
-        assert q.get_shape().as_list() == [None, JQ, d] 
+        assert q.get_shape().as_list() == [None, JQ, d], "Expected {}, got {}".format([None, JX, d], q.get_shape().as_list())
 
         # Step 1: encode x and q, respectively, with independent weights
         #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
@@ -255,7 +253,18 @@ class QASystem(object):
 
         with tf.variable_scope('c'):
             context_sentence_repr, context_repr, context_state =\
-                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
+                 # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+        
+        d_en = 4*d
+        # ---------- opt2 ------------
+        # d_en = d
+        # context_sentence_repr = x
+        # question_sentence_repr = q
+        # -------- opt2 end ---------- 
+        assert context_sentence_repr.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], context_sentence_repr.get_shape().as_list())
+        assert question_sentence_repr.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], question_sentence_repr.get_shape().as_list())
+
 
         # Step 2: combine H and U using "Attention"
         #         e.g. S = H.T * U
@@ -263,18 +272,17 @@ class QASystem(object):
         #              a_q = softmax(S.T)
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
-
         context_attention_state = self.attention.calculate(context_sentence_repr, question_sentence_repr)
 
-        # Step 3: further encode
-        #         e.g. G = f(H, U, H_hat, U_hat)
+        d_com = d_en
+        assert context_attention_state.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([10, JX, d_com], context_attention_state.get_shape().as_list())
 
-
-        # Step 4: decode
+        # Step 3: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
         pred1, pred2 = self.logistic_regression(context_attention_state)
-
+        assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
+        assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
         return pred1, pred2
 
@@ -287,10 +295,20 @@ class QASystem(object):
                   network before the softmax layer.
         :return:
         """
+        JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         with vs.variable_scope("loss"):
             s, e = preds
-            loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
-            loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
+            assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
+            assert self.answer_start_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_start_placeholders.get_shape().as_list())
+            assert self.answer_end_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
+            # loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(preds, self.answer_placeholders),)  
+            # loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            # loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+
+            loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            
              
         return loss1 + loss2
 
@@ -351,7 +369,7 @@ class QASystem(object):
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
 
-        output_feed = [self.answer_start_placeholders, self.answer_end_placeholders]
+        output_feed = [self.preds[0], self.preds[1]]
 
         outputs = session.run(output_feed, input_feed)
 
@@ -403,17 +421,23 @@ class QASystem(object):
         em = 0.
 
         N = len(dataset)
-        sampleIndices = np.random.choice(dataset, sample)
-        predict_s, predict_e = self.answer(session, dataset[list(sampleIndices)])
+        sampleIndices = np.random.choice(N, sample)
+        data = [dataset[i] for i in sampleIndices]
+        batch = [np.array(col) for col in zip(*data)]
+        preds = self.answer(session, batch)
+        predict_s, predict_e = preds
 
-        for i in sampleIndices:
+        for i, s, e in zip(sampleIndices, predict_s, predict_e):
             true_s = int(dataset[i][-1][0])
             true_e = int(dataset[i][-1][1])
-            s = predict_s[i]
-            e = predict_e[i]
-            context_words = [vocab[w] for w in dataset[i][2]]
+            context_words = [vocab[w[0]] for w in dataset[i][2]]
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            predict_answer = ' '.join(context_words[predict_s : predict_e + 1])
+            # print(s)
+            # print(e)
+            if s < e:
+                predict_answer = ' '.join(context_words[s : e + 1])
+            else:
+                predict_answer = ''
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
 
@@ -493,7 +517,7 @@ class QASystem(object):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=10, log=True)
-            self.validate(session, validation_set)
+            # self.validate(session, validation_set)
             # Saving the model
             # saver = tf.train.Saver()
             # saver.save(session, train_dir)
