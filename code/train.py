@@ -34,8 +34,8 @@ tf.app.flags.DEFINE_integer("keep", 0, "How many checkpoints to keep, 0 indicate
 tf.app.flags.DEFINE_string("vocab_path", "data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{embedding_size}.npz)")
 
-tf.app.flags.DEFINE_string("question_maxlen", 38, "Max length of question (default: 30")
-tf.app.flags.DEFINE_string("context_maxlen", 639, "Max length of the context (default: 400)")
+tf.app.flags.DEFINE_string("question_maxlen", 30, "Max length of question (default: 30")
+tf.app.flags.DEFINE_string("context_maxlen", 499, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
 

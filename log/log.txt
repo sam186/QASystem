@@ -55,3 +55,11 @@ Num params: 964002
 Number of params: 964002 (retreival took 1.425416 secs)
 Epoch 1 out of 10
 >>>>>>> origin/runnable
+Created model with fresh parameters.
+Num params: 1925602
+Number of params: 1925602 (retreival took 2.286475 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 1925602
+Number of params: 1925602 (retreival took 2.166580 secs)
+Epoch 1 out of 10
