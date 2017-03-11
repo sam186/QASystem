@@ -27,13 +27,14 @@ def load_glove_embeddings(embed_path):
 
 def add_paddings(sentence, max_length, n_features=1):
     zero_vector = [0] * n_features
-    mask = [True] * len(sentence)
+    mask = [[True]] * len(sentence)
     pad_len = max_length - len(sentence)
     if pad_len > 0:
         padded_sentence = sentence + [zero_vector] * pad_len
-        mask += [False] * pad_len
+        mask += [[False]] * pad_len
     else:
         padded_sentence = sentence[:max_length]
+        mask = mask[:max_length]
     return padded_sentence, mask
 
 def featurize_paragraph(paragraph, paragraph_length):
@@ -50,7 +51,7 @@ def preprocess_dataset(dataset, question_maxlen, context_maxlen):
         # add padding:
         q_sentences, q_mask = add_paddings(q_sentences, question_maxlen)
         c_sentences, c_mask = add_paddings(c_sentences, context_maxlen)
-        processed.append([q_sentences, q_len, c_sentences, c_len, ans])
+        processed.append([q_sentences, q_mask, c_sentences, c_mask, ans])
     return processed
 
 def strip(x):
@@ -110,46 +111,6 @@ def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
     val = preprocess_dataset(val, question_maxlen, context_maxlen)
 
     return {"training": train, "validation": val}
-
-
-def get_minibatches(data, minibatch_size, shuffle=True):
-    """
-    Iterates through the provided data one minibatch at at time. You can use this function to
-    iterate through data in minibatches as follows:
-        for inputs_minibatch in get_minibatches(inputs, minibatch_size):
-            ...
-    Or with multiple data sources:
-        for inputs_minibatch, labels_minibatch in get_minibatches([inputs, labels], minibatch_size):
-            ...
-    Args:
-        data: there are two possible values:
-            - a list or numpy array
-            - a list where each element is either a list or numpy array
-        minibatch_size: the maximum number of items in a minibatch
-        shuffle: whether to randomize the order of returned data
-    Returns:
-        minibatches: the return value depends on data:
-            - If data is a list/array it yields the next minibatch of data.
-            - If data a list of lists/arrays it returns the next minibatch of each element in the
-              list. This can be used to iterate through multiple data sources
-              (e.g., features and labels) at the same time.
-    """
-    list_data = type(data) is list and (type(data[0]) is list or type(data[0]) is np.ndarray)
-    data_size = len(data[0]) if list_data else len(data)
-    indices = np.arange(data_size)
-    if shuffle:
-        np.random.shuffle(indices)
-    for minibatch_start in np.arange(0, data_size, minibatch_size):
-        minibatch_indices = indices[minibatch_start:minibatch_start + minibatch_size]
-        yield [minibatch(d, minibatch_indices) for d in data] if list_data \
-            else minibatch(data, minibatch_indices)
-
-def minibatch(data, minibatch_idx):
-    return data[minibatch_idx] if type(data) is np.ndarray else [data[i] for i in minibatch_idx]
-
-def minibatches(data, batch_size):
-    batches = [np.array(col) for col in zip(*data)]
-    return get_minibatches(batches, batch_size)
 
 
 if __name__ == '__main__':
