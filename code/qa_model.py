@@ -163,6 +163,35 @@ class Decoder(object):
         end_idx = 0
         return start_idx, end_idx
 
+    def logistic_regression(self, X):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: [N, JX, d_en2]
+        Returns:
+            pred: [N, 2, JX]
+        """
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
+
+        X = tf.reshape(X, shape = [-1, d])
+
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        
+        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
+        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
+
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
+
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
         """
@@ -198,37 +227,6 @@ class QASystem(object):
         get_op = get_optimizer(self.config.optimizer)
         self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
-
-    def logistic_regression(self, X):
-        """
-        With any kind of representation, do 2 independent classifications
-        Args:
-            X: [N, JX, d_en2]
-        Returns:
-            pred: [N, 2, JX]
-        """
-        JX = self.config.context_maxlen
-        d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d] 
-
-        X = tf.reshape(X, shape = [-1, d])
-
-        xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        
-        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
-        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
-
-        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
-        # assert preds.get_shape().as_list() == [None, 2, JX]
-        return pred1, pred2
-
-
     def setup_system(self, x, q):
         """
         After your modularized implementation of encoder and decoder
@@ -241,48 +239,56 @@ class QASystem(object):
         d = x.get_shape().as_list()[-1] # self.config.embedding_size * self.config.n_features
         d_ans = self.config.answer_size
         # Args:
-            #   self.x: [None, JX, d]
-            #   self.q: [None, JQ, d]
+            #   x: [None, JX, d]
+            #   q: [None, JQ, d]
         assert x.get_shape().as_list() == [None, JX, d], "Expected {}, got {}".format([None, JX, d], x.get_shape().as_list())
         assert q.get_shape().as_list() == [None, JQ, d], "Expected {}, got {}".format([None, JX, d], q.get_shape().as_list())
 
         # Step 1: encode x and q, respectively, with independent weights
-        #         e.g. H = encode_context(x)   # get H (2d*T) as representation of x
-        #         e.g. U = encode_question(q)  # get U (2d*J) as representation of q
+        #         e.g. u = encode_question(q)  # get U (2d*J) as representation of q
+        #         e.g. h = encode_context(x, u_state)   # get H (2d*T) as representation of x
         with tf.variable_scope('q'):
-            question_sentence_repr, question_repr, question_state = \
+            u, question_repr, u_state = \
                  self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None)
-
         with tf.variable_scope('c'):
-            context_sentence_repr, context_repr, context_state =\
-                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=question_state)
+            h, context_repr, context_state =\
+                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         
         d_en = 4*d
         # ---------- opt2 ------------
         # d_en = d
-        # context_sentence_repr = x
-        # question_sentence_repr = q
+        # h = x
+        # u = q
         # -------- opt2 end ---------- 
-        assert context_sentence_repr.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], context_sentence_repr.get_shape().as_list())
-        assert question_sentence_repr.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], question_sentence_repr.get_shape().as_list())
+        assert h.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
+        assert u.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], u.get_shape().as_list())
 
 
         # Step 2: combine H and U using "Attention"
-        #         e.g. S = H.T * U
-        #              a_x = softmax(S)
-        #              a_q = softmax(S.T)
-        #              U_hat = sum(a_x*U)
-        #              H_hat = sum(a_q*H)
-        context_attention_state = self.attention.calculate(context_sentence_repr, question_sentence_repr)
+        #         e.g. s = h.T * u
+        #              a_x = softmax(s)
+        #              a_q = softmax(s.T)
+        #              u_hat = sum(a_x*u)
+        #              h_hat = sum(a_q*h)
+        #              g = combine(u, h, u_hat, h_hat)
+        g = self.attention.calculate(h, u)
 
         d_com = d_en
-        assert context_attention_state.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([10, JX, d_com], context_attention_state.get_shape().as_list())
+        assert g.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
 
-        # Step 3: decode
+        # Step 3: farther encode
+        #              m = encode(g), !later bi_LSTM*2
+        with tf.variable_scope('g'):
+            m, m_repr, m_state = \
+                 self.encoder.encode(inputs=g, mask=self.context_mask_placeholder, encoder_state_input=None)
+        d_en2 = d_com
+        assert m.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_en2], m.get_shape().as_list())
+
+        # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        pred1, pred2 = self.logistic_regression(context_attention_state)
+        pred1, pred2 = self.decoder.logistic_regression(m)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
