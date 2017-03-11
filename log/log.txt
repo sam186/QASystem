@@ -1,0 +1,16 @@
+Created model with fresh parameters.
+Num params: 964002
+Number of params: 964002 (retreival took 1.645924 secs)
+Epoch 1 out of 10
+F1: 0.0, EM: 0.0, for 10 samples
+Epoch 2 out of 10
+F1: 0.0, EM: 0.0, for 10 samples
+Epoch 3 out of 10
+Created model with fresh parameters.
+Num params: 964002
+Number of params: 964002 (retreival took 1.437049 secs)
+Epoch 1 out of 10
+F1: 0.0204081632653, EM: 0.0204081632653, for 10 samples
+Epoch 2 out of 10
+F1: 0.0, EM: 0.0, for 10 samples
+Epoch 3 out of 10
