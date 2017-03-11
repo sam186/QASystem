@@ -210,21 +210,23 @@ class QASystem(object):
         d = self.x.get_shape().as_list()[-1]
         assert self.x.get_shape().as_list() == [None, JX, d] 
 
-        X = tf.reshape(X, shape = [-1, 4*d])
+        X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 1), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
         b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d*4, 1), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
         b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred1 = tf.reshape(pred1, shape = [-1, JX, 1]) # -> [N, JX, 1]
-        pred2 = tf.reshape(pred2, shape = [-1, JX, 1]) # -> [N, JX, 1]
+        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
+        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
+        assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
+        assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         return pred1, pred2
 
 
@@ -263,9 +265,19 @@ class QASystem(object):
         #              a_q = softmax(S.T)
         #              U_hat = sum(a_x*U)
         #              H_hat = sum(a_q*H)
-
+        
+        # assert context_sentence_repr.get_shape().as_list() == [10, JX, d_en], "Expected {}, got {}".format([10, JX, d_en], context_sentence_repr.get_shape().as_list())
+        print(context_sentence_repr)
+        print(x)
+        # opt1
+        d_en = 4*d
         context_attention_state = self.attention.calculate(context_sentence_repr, question_sentence_repr)
-
+        # opt2
+        # d_en = d
+        # context_attention_state = self.attention.calculate(x, q)
+        d_com = d_en
+        assert context_attention_state.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([10, JX, d_com], context_attention_state.get_shape().as_list())
+        
         # Step 3: further encode
         #         e.g. G = f(H, U, H_hat, U_hat)
 
@@ -287,10 +299,20 @@ class QASystem(object):
                   network before the softmax layer.
         :return:
         """
+        JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         with vs.variable_scope("loss"):
             s, e = preds
-            loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
-            loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
+            assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
+            assert self.answer_start_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_start_placeholders.get_shape().as_list())
+            assert self.answer_end_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
+            # loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(preds, self.answer_placeholders),)  
+            # loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            # loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+
+            loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            
              
         return loss1 + loss2
 
@@ -407,14 +429,15 @@ class QASystem(object):
         data = [dataset[i] for i in sampleIndices]
         batch = [np.array(col) for col in zip(*data)]
         preds = self.answer(session, batch)
+        predict_s, predict_e = preds
 
         for i, s, e in zip(sampleIndices, predict_s, predict_e):
             true_s = int(dataset[i][-1][0])
             true_e = int(dataset[i][-1][1])
             context_words = [vocab[w[0]] for w in dataset[i][2]]
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            print(s)
-            print(e)
+            # print(s)
+            # print(e)
             if s < e:
                 predict_answer = ' '.join(context_words[s : e + 1])
             else:
