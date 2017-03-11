@@ -937,3 +937,39 @@ Created model with fresh parameters.
 Num params: 964804
 Number of params: 964804 (retreival took 1.572690 secs)
 Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.442849 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.638384 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.577572 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.494666 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.746158 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.409686 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.398799 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.442049 secs)
+Epoch 1 out of 10
+Created model with fresh parameters.
+Num params: 964804
+Number of params: 964804 (retreival took 1.480610 secs)
+Epoch 1 out of 10
