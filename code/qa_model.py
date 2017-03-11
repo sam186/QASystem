@@ -113,7 +113,7 @@ class Encoder(object):
         flat_len = tf.cast(flatten(sequence_length, 0), 'int32')
         logging.debug('flat_len: %s' % str(flat_len))
         # Get lstm cell output
-        outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
+        (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
                                                       inputs=inputs,\
                                                       sequence_length=flat_len,
@@ -123,15 +123,16 @@ class Encoder(object):
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
+        outputs_fw = tf.Print(outputs_fw, [outputs_fw])
+        final_state_fw = tf.Print(final_state_fw, [final_state_fw])
 
-        logging.debug('fw hidden state: %s' % str(outputs[0]))
-        hidden_state = tf.concat(2, outputs)
+        logging.debug('fw hidden state: %s' % str(outputs_fw))
+        hidden_state = tf.concat(2, [outputs_fw, outputs_bw])
         logging.debug('Concatenated bi-LSTM hidden state: %s' % str(hidden_state))
         # final_state_fw and final_state_bw are the final states of the forwards/backwards LSTM
-        (final_state_fw, final_state_bw) = final_output_states
         concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
         logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
-        return hidden_state, concat_final_state, final_output_states
+        return hidden_state, concat_final_state, (final_state_fw, final_state_bw)
 
 
 class Decoder(object):
@@ -258,9 +259,9 @@ class QASystem(object):
         
         d_en = 4*d
         # ---------- opt2 ------------
-        d_en = d
-        context_sentence_repr = x
-        question_sentence_repr = q
+        # d_en = d
+        # context_sentence_repr = x
+        # question_sentence_repr = q
         # -------- opt2 end ---------- 
         assert context_sentence_repr.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], context_sentence_repr.get_shape().as_list())
         assert question_sentence_repr.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], question_sentence_repr.get_shape().as_list())
@@ -517,7 +518,7 @@ class QASystem(object):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=10, log=True)
-            self.validate(session, validation_set)
+            # self.validate(session, validation_set)
             # Saving the model
             # saver = tf.train.Saver()
             # saver.save(session, train_dir)
