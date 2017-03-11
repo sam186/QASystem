@@ -10,7 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from operator import mul
 from tensorflow.python.ops import variable_scope as vs
-from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot
+from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot, minibatch
 
 from evaluate import exact_match_score, f1_score
 
@@ -403,8 +403,11 @@ class QASystem(object):
         em = 0.
 
         N = len(dataset)
-        sampleIndices = np.random.choice(dataset, sample)
-        predict_s, predict_e = self.answer(session, dataset[list(sampleIndices)])
+        sampleIndices = np.random.choice(N, sample)
+        data = [dataset[i] for i in sampleIndices]
+        batch = [np.array(col) for col in zip(*data)]
+        print(batch)
+        predict_s, predict_e = self.answer(session, batch)
 
         for i in sampleIndices:
             true_s = int(dataset[i][-1][0])
