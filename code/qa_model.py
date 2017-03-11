@@ -339,13 +339,13 @@ class QASystem(object):
         outputs = session.run(output_feed, input_feed)
         return outputs
 
-    def decode(self, session, test_sample):
+    def decode(self, session, test_batch):
         """
         Returns the probability distribution over different positions in the paragraph
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = test_sample
+        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = test_batch
         input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None)
         
         # fill in this feed_dictionary like:
@@ -357,9 +357,8 @@ class QASystem(object):
 
         return outputs
 
-    def answer(self, session, test_x):
-
-        yp, yp2 = self.decode(session, test_x)
+    def answer(self, session, test_sample):
+        yp, yp2 = self.decode(session, test_sample)
 
         a_s = np.argmax(yp, axis=1)
         a_e = np.argmax(yp2, axis=1)
@@ -404,12 +403,14 @@ class QASystem(object):
         em = 0.
 
         N = len(dataset)
-        sampleIndices = np.random.choice(N, sample)
+        sampleIndices = np.random.choice(dataset, sample)
+        predict_s, predict_e = self.answer(session, dataset[list(sampleIndices)])
 
         for i in sampleIndices:
             true_s = int(dataset[i][-1][0])
             true_e = int(dataset[i][-1][1])
-            predict_s, predict_e = self.answer(session, dataset[i])
+            s = predict_s[i]
+            e = predict_e[i]
             context_words = [vocab[w] for w in dataset[i][2]]
             true_answer = ' '.join(context_words[true_s : true_e + 1])
             predict_answer = ' '.join(context_words[predict_s : predict_e + 1])
