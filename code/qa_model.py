@@ -191,10 +191,10 @@ class Decoder(object):
         b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
         b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        variable_summaries(W1)
-        variable_summaries(b1)
-        variable_summaries(W2)
-        variable_summaries(b2)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
@@ -488,12 +488,14 @@ class QASystem(object):
             feed_dict[self.answer_end_placeholders] = end
         return feed_dict
 
-    def run_epoch(self, session, training_set):
-        prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
+    def run_epoch(self, session, epoch_num, training_set):
+        batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
+            global_batch_num = batch_num * epoch_num + i
             _, summary, loss = self.optimize(session, batch)
-            if i % self.config.log_batch_num == 0:
-                self.train_writer.add_summary(summary, i)
+            if self.config.tensorboard and global_batch_num % self.config.log_batch_num == 0:
+                self.train_writer.add_summary(summary, global_batch_num)
             prog.update(i + 1, [("training loss", loss)])
         print("")
         return 0
@@ -537,11 +539,12 @@ class QASystem(object):
 
         training_set = dataset['training']
         validation_set = dataset['validation']
-        train_writer_dir = self.config.log_dir + '/train/' + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
-        self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
+        if self.config.tensorboard:
+            train_writer_dir = self.config.log_dir + '/train/' # + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
+            self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, training_set)
+            score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
             self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
             # self.validate(session, validation_set)
