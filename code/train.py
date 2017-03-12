@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_string("context_maxlen", None, "Max length of the context (d
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
 tf.app.flags.DEFINE_string("log_batch_num", 1, "Number of batches to write logs on tensorboard.")
-tf.app.flags.DEFINE_string("tensorboard", True, "Write tensorboard log or not.")
+tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
 
