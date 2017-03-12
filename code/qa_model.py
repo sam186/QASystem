@@ -420,7 +420,7 @@ class QASystem(object):
         prog = Progbar(target=batch_num)
         avg_loss = 0
         for i, batch in enumerate(minibatches(valid_dataset, self.config.batch_size)):
-            loss = self.test(session, batch)
+            loss = self.test(sess, batch)
             prog.update(i + 1, [("validation loss", loss)])
             avg_loss += loss
         avg_loss /= batch_num
