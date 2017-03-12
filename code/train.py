@@ -109,7 +109,8 @@ def main(_):
     with open(os.path.join(FLAGS.log_dir, "flags.json"), 'w') as fout:
         json.dump(FLAGS.__flags, fout)
 
-    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.2)
+    gpu_options = tf.GPUOptions()
+    gpu_options.allow_growth=True
 
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
