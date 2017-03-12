@@ -1,2 +1,2 @@
-rm -rf log/
-rm -rf train/
+rm -rf log/*
+rm -rf train/*
