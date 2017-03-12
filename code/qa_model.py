@@ -118,14 +118,13 @@ class Encoder(object):
             initial_state_fw, initial_state_bw = encoder_state_input
 
         logging.debug('Inputs: %s' % str(inputs))
-        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), 1)
-        flat_len = tf.cast(flatten(sequence_length, 0), 'int32')
-        logging.debug('flat_len: %s' % str(flat_len))
+        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), axis=1)
+        sequence_length = tf.reshape(sequence_length, [-1,])
         # Get lstm cell output
         (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
                                                       inputs=inputs,\
-                                                      sequence_length=flat_len,
+                                                      sequence_length=sequence_length,
                                                       initial_state_fw=initial_state_fw,\
                                                       initial_state_bw=initial_state_bw,
                                                       dtype=tf.float64)
@@ -452,12 +451,16 @@ class QASystem(object):
             predict_e.extend(e)
 
         for i, s, e in zip(sampleIndices, predict_s, predict_e):
+            # remove paddings in answer
+            # TODO: should be handled by decoder.
+            context_len = np.sum(dataset[i][3])
+            e = min(e, context_len - 1)
+
             true_s = int(dataset[i][-1][0])
             true_e = int(dataset[i][-1][1])
             context_words = [vocab[w[0]] for w in dataset[i][2]]
+
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            # print(s)
-            # print(e)
             if s <= e:
                 predict_answer = ' '.join(context_words[s : e + 1])
             else:
@@ -465,8 +468,8 @@ class QASystem(object):
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
 
-        f1 /= N
-        em /= N
+        f1 = f1 / sample
+        em = em / sample
 
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
