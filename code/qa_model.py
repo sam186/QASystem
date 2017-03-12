@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, datetime
 import logging
 
 import numpy as np
@@ -28,26 +28,14 @@ def variable_summaries(var):
     tf.summary.scalar('min', tf.reduce_min(var))
     tf.summary.histogram('histogram', var)
 
-def get_optimizer(opt, loss, max_grad_norm, learning_rate):
+def get_optimizer(opt):
     if opt == "adam":
-        optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
+        optfn = tf.train.AdamOptimizer
     elif opt == "sgd":
-        optfn = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        optfn = tf.train.GradientDescentOptimizer
     else:
         assert (False)
-
-    grads_and_vars = optfn.compute_gradients(loss)
-    variables = [output[1] for output in grads_and_vars]
-    gradients = [output[0] for output in grads_and_vars]
-
-    gradients = tf.clip_by_global_norm(gradients, clip_norm=max_grad_norm)[0]
-    #gradients = tmp_gradients
-
-    grads_and_vars = [(gradients[i], variables[i]) for i in range(len(gradients))]
-
-    train_op = optfn.apply_gradients(grads_and_vars)
-
-    return train_op
+    return optfn
 
 
 class Attention(object):
@@ -250,9 +238,8 @@ class QASystem(object):
             self.loss = self.setup_loss(self.preds)
 
         # ==== set up training/updating procedure ====
-        global_step = tf.Variable(0, trainable=False)
-        learning_rate = tf.train.exponential_decay(config.learning_rate, global_step, 100000, 0.96, staircase=True)
-        self.train_op = get_optimizer("adam", self.loss, config.max_gradient_norm, learning_rate)
+        get_op = get_optimizer(self.config.optimizer)
+        self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
         self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
@@ -505,7 +492,8 @@ class QASystem(object):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
             _, summary, loss = self.optimize(session, batch)
-            self.train_writer.add_summary(summary, i)
+            if i % self.config.log_batch_num == 0:
+                self.train_writer.add_summary(summary, i)
             prog.update(i + 1, [("training loss", loss)])
         print("")
         return 0
@@ -549,8 +537,8 @@ class QASystem(object):
 
         training_set = dataset['training']
         validation_set = dataset['validation']
-
-        self.train_writer = tf.summary.FileWriter(self.config.log_dir + '/train', session.graph)
+        train_writer_dir = self.config.log_dir + '/train/' + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
+        self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
@@ -559,4 +547,4 @@ class QASystem(object):
             # self.validate(session, validation_set)
             # Saving the model
             saver = tf.train.Saver()
-            saver.save(session, train_dir)
+            saver.save(session, train_dir+'/fancier_model')
