@@ -212,6 +212,8 @@ class Decoder(object):
         pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
         pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
