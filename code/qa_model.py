@@ -416,11 +416,16 @@ class QASystem(object):
 
         :return:
         """
-        valid_cost = self.test(sess, valid_dataset)
-
-        # TODO: set up validation cost
-
-        return valid_cost
+        batch_num = int(np.ceil(len(valid_dataset) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
+        avg_loss = 0
+        for i, batch in enumerate(minibatches(valid_dataset, self.config.batch_size)):
+            loss = self.test(session, batch)
+            prog.update(i + 1, [("validation loss", loss)])
+            avg_loss += loss
+        avg_loss /= batch_num
+        logging.info("Average validation loss: {}".format(avg_loss))
+        return avg_loss
 
     def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
         """
@@ -494,14 +499,17 @@ class QASystem(object):
     def run_epoch(self, session, epoch_num, training_set):
         batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
         prog = Progbar(target=batch_num)
+        avg_loss = 0
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
             global_batch_num = batch_num * epoch_num + i
             _, summary, loss = self.optimize(session, batch)
             if self.config.tensorboard and global_batch_num % self.config.log_batch_num == 0:
                 self.train_writer.add_summary(summary, global_batch_num)
             prog.update(i + 1, [("training loss", loss)])
-        print("")
-        return 0
+            avg_loss += loss
+        avg_loss /= batch_num
+        logging.info("Average training loss: {}".format(avg_loss))
+        return avg_loss
 
 
     def train(self, session, dataset, train_dir, vocab):
@@ -549,8 +557,9 @@ class QASystem(object):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
+            logging.info("-- validation --")
+            self.validate(session, validation_set)
             self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
-            # self.validate(session, validation_set)
             # Saving the model
             saver = tf.train.Saver()
             saver.save(session, train_dir+'/fancier_model')
