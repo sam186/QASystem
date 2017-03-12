@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, datetime
 import logging
 
 import numpy as np
@@ -16,6 +16,17 @@ from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
 
+def variable_summaries(var):
+  """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean', mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev', stddev)
+    tf.summary.scalar('max', tf.reduce_max(var))
+    tf.summary.scalar('min', tf.reduce_min(var))
+    tf.summary.histogram('histogram', var)
 
 def get_optimizer(opt):
     if opt == "adam":
@@ -81,8 +92,6 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-
-
     def encode(self, inputs, mask, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
@@ -109,14 +118,13 @@ class Encoder(object):
             initial_state_fw, initial_state_bw = encoder_state_input
 
         logging.debug('Inputs: %s' % str(inputs))
-        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), 1)
-        flat_len = tf.cast(flatten(sequence_length, 0), 'int32')
-        logging.debug('flat_len: %s' % str(flat_len))
+        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), axis=1)
+        sequence_length = tf.reshape(sequence_length, [-1,])
         # Get lstm cell output
         (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
                                                       inputs=inputs,\
-                                                      sequence_length=flat_len,
+                                                      sequence_length=sequence_length,
                                                       initial_state_fw=initial_state_fw,\
                                                       initial_state_bw=initial_state_bw,
                                                       dtype=tf.float64)
@@ -182,12 +190,17 @@ class Decoder(object):
         b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
         b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
         pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
@@ -226,6 +239,7 @@ class QASystem(object):
         # ==== set up training/updating procedure ====
         get_op = get_optimizer(self.config.optimizer)
         self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
         """
@@ -316,9 +330,9 @@ class QASystem(object):
 
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
-            
-             
-        return loss1 + loss2
+        loss = loss1 + loss2
+        tf.summary.scalar('loss', loss)
+        return loss
 
     def setup_embeddings(self):
         """
@@ -346,10 +360,9 @@ class QASystem(object):
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
-        output_feed = [self.train_op, self.loss]
+        output_feed = [self.train_op, self.merged, self.loss]
 
         outputs = session.run(output_feed, input_feed)
-
         return outputs
 
     def test(self, session, validation_set):
@@ -403,11 +416,16 @@ class QASystem(object):
 
         :return:
         """
-        valid_cost = self.test(sess, valid_dataset)
-
-        # TODO: set up validation cost
-
-        return valid_cost
+        batch_num = int(np.ceil(len(valid_dataset) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
+        avg_loss = 0
+        for i, batch in enumerate(minibatches(valid_dataset, self.config.batch_size)):
+            loss = self.test(sess, batch)
+            prog.update(i + 1, [("validation loss", loss)])
+            avg_loss += loss
+        avg_loss /= batch_num
+        logging.info("Average validation loss: {}".format(avg_loss))
+        return avg_loss
 
     def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
         """
@@ -438,12 +456,16 @@ class QASystem(object):
             predict_e.extend(e)
 
         for i, s, e in zip(sampleIndices, predict_s, predict_e):
+            # remove paddings in answer
+            # TODO: should be handled by decoder.
+            context_len = np.sum(dataset[i][3])
+            e = min(e, context_len - 1)
+
             true_s = int(dataset[i][-1][0])
             true_e = int(dataset[i][-1][1])
             context_words = [vocab[w[0]] for w in dataset[i][2]]
+
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            # print(s)
-            # print(e)
             if s <= e:
                 predict_answer = ' '.join(context_words[s : e + 1])
             else:
@@ -451,8 +473,8 @@ class QASystem(object):
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
 
-        f1 /= N
-        em /= N
+        f1 = f1 / sample
+        em = em / sample
 
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
@@ -474,13 +496,20 @@ class QASystem(object):
             feed_dict[self.answer_end_placeholders] = end
         return feed_dict
 
-    def run_epoch(self, session, training_set):
-        prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
+    def run_epoch(self, session, epoch_num, training_set):
+        batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
+        avg_loss = 0
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            _, loss = self.optimize(session, batch)
+            global_batch_num = batch_num * epoch_num + i
+            _, summary, loss = self.optimize(session, batch)
+            if self.config.tensorboard and global_batch_num % self.config.log_batch_num == 0:
+                self.train_writer.add_summary(summary, global_batch_num)
             prog.update(i + 1, [("training loss", loss)])
-        print("")
-        return 0
+            avg_loss += loss
+        avg_loss /= batch_num
+        logging.info("Average training loss: {}".format(avg_loss))
+        return avg_loss
 
 
     def train(self, session, dataset, train_dir, vocab):
@@ -521,13 +550,16 @@ class QASystem(object):
 
         training_set = dataset['training']
         validation_set = dataset['validation']
-
+        if self.config.tensorboard:
+            train_writer_dir = self.config.log_dir + '/train/' # + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
+            self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, training_set)
+            score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
+            logging.info("-- validation --")
+            self.validate(session, validation_set)
             self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
-            # self.validate(session, validation_set)
             # Saving the model
             saver = tf.train.Saver()
             saver.save(session, train_dir+'/fancier_model')
