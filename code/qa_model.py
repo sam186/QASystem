@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, datetime
 import logging
 
 import numpy as np
@@ -16,6 +16,17 @@ from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
 
+def variable_summaries(var):
+  """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean', mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev', stddev)
+    tf.summary.scalar('max', tf.reduce_max(var))
+    tf.summary.scalar('min', tf.reduce_min(var))
+    tf.summary.histogram('histogram', var)
 
 def get_optimizer(opt):
     if opt == "adam":
@@ -80,8 +91,6 @@ class Encoder(object):
     def __init__(self, size, vocab_dim):
         self.size = size
         self.vocab_dim = vocab_dim
-
-
 
     def encode(self, inputs, mask, encoder_state_input):
         """
@@ -182,12 +191,17 @@ class Decoder(object):
         b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
         W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
         b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        
+        variable_summaries(W1)
+        variable_summaries(b1)
+        variable_summaries(W2)
+        variable_summaries(b2)
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
         pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
@@ -226,6 +240,7 @@ class QASystem(object):
         # ==== set up training/updating procedure ====
         get_op = get_optimizer(self.config.optimizer)
         self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
         """
@@ -316,9 +331,9 @@ class QASystem(object):
 
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
-            
-             
-        return loss1 + loss2
+        loss = loss1 + loss2
+        tf.summary.scalar('loss', loss)
+        return loss
 
     def setup_embeddings(self):
         """
@@ -346,10 +361,9 @@ class QASystem(object):
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
-        output_feed = [self.train_op, self.loss]
+        output_feed = [self.train_op, self.merged, self.loss]
 
         outputs = session.run(output_feed, input_feed)
-
         return outputs
 
     def test(self, session, validation_set):
@@ -477,7 +491,9 @@ class QASystem(object):
     def run_epoch(self, session, training_set):
         prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            _, loss = self.optimize(session, batch)
+            _, summary, loss = self.optimize(session, batch)
+            if i % self.config.log_batch_num == 0:
+                self.train_writer.add_summary(summary, i)
             prog.update(i + 1, [("training loss", loss)])
         print("")
         return 0
@@ -521,7 +537,8 @@ class QASystem(object):
 
         training_set = dataset['training']
         validation_set = dataset['validation']
-
+        train_writer_dir = self.config.log_dir + '/train/' + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
+        self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, training_set)
