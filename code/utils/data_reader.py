@@ -8,11 +8,16 @@ logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 class Config(object):
-    def __init__(self, data_dir, small_dir=None):
+    def __init__(self, data_dir, small_dir=None, small_val = None):
             # self.val_answer_file = pjoin(data_dir, 'val.answer')
-        self.val_answer_span_file = pjoin(data_dir, 'val.span')
-        self.val_question_file = pjoin(data_dir, 'val.ids.question')
-        self.val_context_file = pjoin(data_dir, 'val.ids.context')
+        if small_val is None:
+            self.val_answer_span_file = pjoin(data_dir, 'val.span')
+            self.val_question_file = pjoin(data_dir, 'val.ids.question')
+            self.val_context_file = pjoin(data_dir, 'val.ids.context')
+        else:
+            self.val_answer_span_file = pjoin(data_dir, 'val.span_')+str(small_val)
+            self.val_question_file = pjoin(data_dir, 'val.ids.question_')+str(small_val)
+            self.val_context_file = pjoin(data_dir, 'val.ids.context_')+str(small_val)
         if small_dir is None:
             # self.train_answer_file = pjoin(data_dir, 'train.answer')
             self.train_answer_span_file = pjoin(data_dir, 'train.span')
@@ -62,8 +67,8 @@ def preprocess_dataset(dataset, question_maxlen, context_maxlen):
 def strip(x):
     return map(int, x.strip().split(" "))
 
-def read_data(data_dir, small_dir=None, question_maxlen=None, context_maxlen=None, debug_train_samples=None, debug_val_samples=None):
-    config = Config(data_dir, small_dir=small_dir)
+def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, context_maxlen=None, debug_train_samples=None, debug_val_samples=None):
+    config = Config(data_dir, small_dir=small_dir, small_val = small_val)
 
     train = []
     max_q_len = 0

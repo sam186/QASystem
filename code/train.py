@@ -92,7 +92,7 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    dataset = read_data(FLAGS.data_dir, small_dir=5, debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=10)
+    dataset = read_data(FLAGS.data_dir, small_dir=5, small_val=100, debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=10)
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
