@@ -67,7 +67,7 @@ def preprocess_dataset(dataset, question_maxlen, context_maxlen):
 def strip(x):
     return map(int, x.strip().split(" "))
 
-def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, context_maxlen=None, debug_train_samples=None, debug_val_samples=100):
+def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, context_maxlen=None, debug_train_samples=None, debug_val_samples=None):
     config = Config(data_dir, small_dir=small_dir, small_val = small_val)
 
     train = []
