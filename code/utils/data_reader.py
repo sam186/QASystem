@@ -8,15 +8,20 @@ logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 class Config(object):
-    def __init__(self, data_dir):
-        # self.train_answer_file = pjoin(data_dir, 'train.answer')
-        self.train_answer_span_file = pjoin(data_dir, 'train.span')
-        self.train_question_file = pjoin(data_dir, 'train.ids.question')
-        self.train_context_file = pjoin(data_dir, 'train.ids.context')
-        # self.val_answer_file = pjoin(data_dir, 'val.answer')
+    def __init__(self, data_dir, small_dir=None):
+            # self.val_answer_file = pjoin(data_dir, 'val.answer')
         self.val_answer_span_file = pjoin(data_dir, 'val.span')
         self.val_question_file = pjoin(data_dir, 'val.ids.question')
         self.val_context_file = pjoin(data_dir, 'val.ids.context')
+        if small_dir is None:
+            # self.train_answer_file = pjoin(data_dir, 'train.answer')
+            self.train_answer_span_file = pjoin(data_dir, 'train.span')
+            self.train_question_file = pjoin(data_dir, 'train.ids.question')
+            self.train_context_file = pjoin(data_dir, 'train.ids.context')
+        else:
+            self.train_answer_span_file = pjoin(data_dir, 'train.span_' + str(small_dir))
+            self.train_question_file = pjoin(data_dir, 'train.ids.question_' + str(small_dir))
+            self.train_context_file = pjoin(data_dir, 'train.ids.context_' + str(small_dir))
 
 def load_glove_embeddings(embed_path):
     logger.info("Loading glove embedding...")
@@ -57,12 +62,8 @@ def preprocess_dataset(dataset, question_maxlen, context_maxlen):
 def strip(x):
     return map(int, x.strip().split(" "))
 
-def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
-    config = Config(data_dir)
-
-    if debug:
-        debug_train_samples = 40 # (1 / 5)
-        debug_val_samples = 4284 
+def read_data(data_dir, small_dir=None, question_maxlen=None, context_maxlen=None, debug_train_samples=None, debug_val_samples=None):
+    config = Config(data_dir, small_dir=small_dir)
 
     train = []
     max_q_len = 0
@@ -79,7 +80,7 @@ def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
                 train.append(sample)
                 max_q_len = max(max_q_len, len(question))
                 max_c_len = max(max_c_len, len(context))
-                if debug and len(train) == debug_train_samples:
+                if debug_train_samples is not None and len(train) == debug_train_samples:
                     break
     logger.info("Finish loading %d train data." % len(train))
 
@@ -96,7 +97,7 @@ def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
                 val.append(sample)
                 max_q_len = max(max_q_len, len(question))
                 max_c_len = max(max_c_len, len(context))
-                if debug and len(val) == debug_val_samples:
+                if debug_val_samples is not None and len(val) == debug_val_samples:
                     break
     logger.info("Finish loading %d validation data." % len(val))
     logger.info("Max question length %d" % max_q_len)
@@ -110,7 +111,7 @@ def read_data(data_dir, question_maxlen=None, context_maxlen=None, debug=True):
     train = preprocess_dataset(train, question_maxlen, context_maxlen)
     val = preprocess_dataset(val, question_maxlen, context_maxlen)
 
-    return {"training": train, "validation": val}
+    return {"training": train, "validation": val, "question_maxlen": max_q_len, "context_maxlen": max_c_len}
 
 
 if __name__ == '__main__':
