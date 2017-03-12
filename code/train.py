@@ -38,7 +38,7 @@ tf.app.flags.DEFINE_string("question_maxlen", 30, "Max length of question (defau
 tf.app.flags.DEFINE_string("context_maxlen", 499, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
-
+tf.app.flags.DEFINE_string("log_batch_num", 20, "Number of batches to write logs on tensorboard.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 
 
@@ -112,7 +112,10 @@ def main(_):
     with open(os.path.join(FLAGS.log_dir, "flags.json"), 'w') as fout:
         json.dump(FLAGS.__flags, fout)
 
-    with tf.Session() as sess:
+    gpu_options = tf.GPUOptions()
+    gpu_options.allow_growth=True
+
+    with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         initialize_model(sess, qa, load_train_dir)
 
