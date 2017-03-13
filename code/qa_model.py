@@ -558,7 +558,7 @@ class QASystem(object):
             score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
             logging.info("-- validation --")
-            self.validate(session, validation_set)
+            # self.validate(session, validation_set)
             self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
             # Saving the model
             saver = tf.train.Saver()
