@@ -452,19 +452,18 @@ class QASystem(object):
             predict_s.extend(s)
             predict_e.extend(e)
 
-        for i, s, e in zip(sampleIndices, predict_s, predict_e):
+        for example, start, end in zip(evaluate_set, predict_s, predict_e):
+            q, q_mask, c, c_mask, (true_s, true_e) = example
+
             # remove paddings in answer
             # TODO: should be handled by decoder.
-            context_len = np.sum(dataset[i][3])
-            e = min(e, context_len - 1)
-
-            true_s = int(dataset[i][-1][0])
-            true_e = int(dataset[i][-1][1])
-            context_words = [vocab[w[0]] for w in dataset[i][2]]
+            context_len = np.sum(c_mask)
+            end = min(end, context_len - 1)
+            context_words = [vocab[w[0]] for w in c]
 
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            if s <= e:
-                predict_answer = ' '.join(context_words[s : e + 1])
+            if start <= end:
+                predict_answer = ' '.join(context_words[start : end + 1])
             else:
                 predict_answer = ''
             f1 += f1_score(predict_answer, true_answer)
@@ -555,7 +554,7 @@ class QASystem(object):
             score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
             logging.info("-- validation --")
-            self.validate(session, validation_set)
+            # self.validate(session, validation_set)
             self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
             # Saving the model
             saver = tf.train.Saver()
