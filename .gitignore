@@ -3,5 +3,6 @@ tmp/*
 ./download/*
 *.pyc
 ./log/*
+data/*
 log/
 train/*
