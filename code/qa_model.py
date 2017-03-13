@@ -205,6 +205,78 @@ class Decoder(object):
         # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
 
+    def logistic_regression_concat(self, X):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: [N, JX, d_en2]
+        Returns:
+            pred: [N, 2, JX]
+        """
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
+
+        X = tf.reshape(X, shape = [-1, JX*d])
+
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float64)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
+        pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        pred2 = tf.matmul(X, W2)+b2 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        # pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
+        # pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
+
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
+
+    def logistic_regression_start_end(self, X):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: [N, JX, d_en2]
+        Returns:
+            pred: [N, 2, JX]
+        """
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
+
+        X = tf.reshape(X, shape = [-1, d])
+
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
+        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
+
+        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX, JX), dtype=tf.float64)
+        W_x = tf.get_variable('W_x', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX, JX), dtype=tf.float64)
+        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
+        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
+
+
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
+
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
         """
@@ -302,7 +374,7 @@ class QASystem(object):
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        pred1, pred2 = self.decoder.logistic_regression(m)
+        pred1, pred2 = self.decoder.logistic_regression_concat(m)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
@@ -558,7 +630,7 @@ class QASystem(object):
             score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
             logging.info("-- validation --")
-            self.validate(session, validation_set)
+            # self.validate(session, validation_set)
             self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
             # Saving the model
             saver = tf.train.Saver()
