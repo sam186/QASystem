@@ -4,6 +4,7 @@
 # Get directory containing this script
 
 CODE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+echo $CODE_DIR
 
 export PYTHONPATH=$PYTHONPATH:$CODE_DIR
 
