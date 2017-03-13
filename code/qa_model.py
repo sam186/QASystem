@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import time, datetime
 import logging
 
 import numpy as np
@@ -16,6 +16,17 @@ from evaluate import exact_match_score, f1_score
 
 logging.basicConfig(level=logging.INFO)
 
+def variable_summaries(var):
+  """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+  with tf.name_scope('summaries'):
+    mean = tf.reduce_mean(var)
+    tf.summary.scalar('mean', mean)
+    with tf.name_scope('stddev'):
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+    tf.summary.scalar('stddev', stddev)
+    tf.summary.scalar('max', tf.reduce_max(var))
+    tf.summary.scalar('min', tf.reduce_min(var))
+    tf.summary.histogram('histogram', var)
 
 def get_optimizer(opt):
     if opt == "adam":
@@ -81,8 +92,6 @@ class Encoder(object):
         self.size = size
         self.vocab_dim = vocab_dim
 
-
-
     def encode(self, inputs, mask, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
@@ -109,17 +118,16 @@ class Encoder(object):
             initial_state_fw, initial_state_bw = encoder_state_input
 
         logging.debug('Inputs: %s' % str(inputs))
-        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), 1)
-        flat_len = tf.cast(flatten(sequence_length, 0), 'int32')
-        logging.debug('flat_len: %s' % str(flat_len))
+        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), axis=1)
+        sequence_length = tf.reshape(sequence_length, [-1,])
         # Get lstm cell output
         (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
                                                       inputs=inputs,\
-                                                      sequence_length=flat_len,
+                                                      sequence_length=sequence_length,
                                                       initial_state_fw=initial_state_fw,\
                                                       initial_state_bw=initial_state_bw,
-                                                      dtype=tf.float64)
+                                                      dtype=tf.float32)
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
@@ -154,10 +162,10 @@ class Decoder(object):
         logging.debug('-'*5 + 'decode' + '-'*5)
         logging.debug('Input knowledge_rep: %s' % str(knowledge_rep))
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=1, state_is_tuple=True)
-        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float64)
+        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float32)
         logging.debug('Hidden state: %s' % str(hidden_states))
         xavier_initializer=tf.contrib.layers.xavier_initializer()
-        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float64)
+        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float32)
         preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
         start_idx = 0
         end_idx = 0
@@ -178,16 +186,90 @@ class Decoder(object):
         X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float32)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
         pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
         pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
         pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
+
+    def logistic_regression_concat(self, X):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: [N, JX, d_en2]
+        Returns:
+            pred: [N, 2, JX]
+        """
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
+
+        X = tf.reshape(X, shape = [-1, JX*d])
+
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
+        pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        pred2 = tf.matmul(X, W2)+b2 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
+
+    def logistic_regression_start_end(self, X):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: [N, JX, d_en2]
+        Returns:
+            pred: [N, JX]*2
+        """
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d] 
+
+        X = tf.reshape(X, shape = [-1, JX*d])
+
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
+        b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
+        pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        h0 = tf.matmul(X, W2)+b2 #[ N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        h = tf.concat(1,[h0, pred1]) # (concat) [h0, pred1] -> h:[N, 2*JX]
+        assert h.get_shape().as_list() == [None, 2*JX], "Expected {}, got {}".format([None, 2*JX], h.get_shape().as_list())
+        pred2 = tf.matmul(h, W_se)+b_se # [N, 2*JX]*[2*JX, JX]+[JX,] -> [N, JX]
+
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
         # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
         # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
@@ -226,6 +308,7 @@ class QASystem(object):
         # ==== set up training/updating procedure ====
         get_op = get_optimizer(self.config.optimizer)
         self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
         """
@@ -288,7 +371,8 @@ class QASystem(object):
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        pred1, pred2 = self.decoder.logistic_regression(m)
+        # pred1, pred2 = self.decoder.logistic_regression_concat(m)
+        pred1, pred2 = self.decoder.logistic_regression_start_end(m)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
@@ -316,9 +400,9 @@ class QASystem(object):
 
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
-            
-             
-        return loss1 + loss2
+        loss = loss1 + loss2
+        tf.summary.scalar('loss', loss)
+        return loss
 
     def setup_embeddings(self):
         """
@@ -329,7 +413,7 @@ class QASystem(object):
             if self.config.RE_TRAIN_EMBED:
                 pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
             else:
-                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float64)
+                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
@@ -346,10 +430,9 @@ class QASystem(object):
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
         input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
 
-        output_feed = [self.train_op, self.loss]
+        output_feed = [self.train_op, self.merged, self.loss]
 
         outputs = session.run(output_feed, input_feed)
-
         return outputs
 
     def test(self, session, validation_set):
@@ -391,6 +474,14 @@ class QASystem(object):
 
         return (a_s, a_e)
 
+    def predict_on_batch(self, session, dataset):
+        predict_s, predict_e = [], []
+        for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
+            s, e = self.answer(session, batch)
+            predict_s.extend(s)
+            predict_e.extend(e)
+        return predict_s, predict_e
+
     def validate(self, sess, valid_dataset):
         """
         Iterate through the validation dataset and determine what
@@ -403,11 +494,16 @@ class QASystem(object):
 
         :return:
         """
-        valid_cost = self.test(sess, valid_dataset)
-
-        # TODO: set up validation cost
-
-        return valid_cost
+        batch_num = int(np.ceil(len(valid_dataset) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
+        avg_loss = 0
+        for i, batch in enumerate(minibatches(valid_dataset, self.config.batch_size)):
+            loss = self.test(sess, batch)[0]
+            prog.update(i + 1, [("validation loss", loss)])
+            avg_loss += loss
+        avg_loss /= batch_num
+        logging.info("Average validation loss: {}".format(avg_loss))
+        return avg_loss
 
     def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
         """
@@ -431,28 +527,27 @@ class QASystem(object):
         N = len(dataset)
         sampleIndices = np.random.choice(N, sample)
         evaluate_set = [dataset[i] for i in sampleIndices]
-        predict_s, predict_e = [], []
-        for i, batch in enumerate(minibatches(evaluate_set, self.config.batch_size)):
-            s, e = self.answer(session, batch)
-            predict_s.extend(s)
-            predict_e.extend(e)
+        predict_s, predict_e = self.predict_on_batch(session, evaluate_set)
 
-        for i, s, e in zip(sampleIndices, predict_s, predict_e):
-            true_s = int(dataset[i][-1][0])
-            true_e = int(dataset[i][-1][1])
-            context_words = [vocab[w[0]] for w in dataset[i][2]]
+        for example, start, end in zip(evaluate_set, predict_s, predict_e):
+            q, q_mask, c, c_mask, (true_s, true_e) = example
+
+            # remove paddings in answer
+            # TODO: should be handled by decoder.
+            context_len = np.sum(c_mask)
+            end = min(end, context_len - 1)
+            context_words = [vocab[w[0]] for w in c]
+
             true_answer = ' '.join(context_words[true_s : true_e + 1])
-            # print(s)
-            # print(e)
-            if s <= e:
-                predict_answer = ' '.join(context_words[s : e + 1])
+            if start <= end:
+                predict_answer = ' '.join(context_words[start : end + 1])
             else:
                 predict_answer = ''
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
 
-        f1 /= N
-        em /= N
+        f1 = f1 / sample
+        em = em / sample
 
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
@@ -474,13 +569,20 @@ class QASystem(object):
             feed_dict[self.answer_end_placeholders] = end
         return feed_dict
 
-    def run_epoch(self, session, training_set):
-        prog = Progbar(target=1 + int(len(training_set) / self.config.batch_size))
+    def run_epoch(self, session, epoch_num, training_set):
+        batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
+        avg_loss = 0
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
-            _, loss = self.optimize(session, batch)
+            global_batch_num = batch_num * epoch_num + i
+            _, summary, loss = self.optimize(session, batch)
+            if self.config.tensorboard and global_batch_num % self.config.log_batch_num == 0:
+                self.train_writer.add_summary(summary, global_batch_num)
             prog.update(i + 1, [("training loss", loss)])
-        print("")
-        return 0
+            avg_loss += loss
+        avg_loss /= batch_num
+        logging.info("Average training loss: {}".format(avg_loss))
+        return avg_loss
 
 
     def train(self, session, dataset, train_dir, vocab):
@@ -521,13 +623,19 @@ class QASystem(object):
 
         training_set = dataset['training']
         validation_set = dataset['validation']
-
+        sample_size = 100
+        if self.config.debug_train_samples !=None:
+            sample_size = min([sample_size, self.config.debug_train_samples])
+        if self.config.tensorboard:
+            train_writer_dir = self.config.log_dir + '/train/' # + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
+            self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, training_set)
-            self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
-            self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
+            score = self.run_epoch(session, epoch, training_set)
+            self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
+            logging.info("-- validation --")
             # self.validate(session, validation_set)
+            self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             # Saving the model
             saver = tf.train.Saver()
-            saver.save(session, train_dir)
+            saver.save(session, train_dir+'/fancier_model')

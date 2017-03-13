@@ -4,3 +4,5 @@ tmp/*
 *.pyc
 ./log/*
 data/*
+log/
+train/*
