@@ -473,6 +473,14 @@ class QASystem(object):
 
         return (a_s, a_e)
 
+    def predict_on_batch(self, session, dataset):
+        predict_s, predict_e = [], []
+        for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
+            s, e = self.answer(session, batch)
+            predict_s.extend(s)
+            predict_e.extend(e)
+        return predict_s, predict_e
+
     def validate(self, sess, valid_dataset):
         """
         Iterate through the validation dataset and determine what
@@ -518,11 +526,7 @@ class QASystem(object):
         N = len(dataset)
         sampleIndices = np.random.choice(N, sample)
         evaluate_set = [dataset[i] for i in sampleIndices]
-        predict_s, predict_e = [], []
-        for i, batch in enumerate(minibatches(evaluate_set, self.config.batch_size)):
-            s, e = self.answer(session, batch)
-            predict_s.extend(s)
-            predict_e.extend(e)
+        predict_s, predict_e = self.predict_on_batch(session, evaluate_set)
 
         for example, start, end in zip(evaluate_set, predict_s, predict_e):
             q, q_mask, c, c_mask, (true_s, true_e) = example
