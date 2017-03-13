@@ -164,9 +164,6 @@ class Decoder(object):
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=1, state_is_tuple=True)
         hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float64)
         logging.debug('Hidden state: %s' % str(hidden_states))
-        xavier_initializer=tf.contrib.layers.xavier_initializer()
-        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float64)
-        preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
         start_idx = 0
         end_idx = 0
         return start_idx, end_idx
