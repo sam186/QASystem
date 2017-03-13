@@ -17,6 +17,7 @@ import tensorflow as tf
 from qa_model import Encoder, QASystem, Decoder
 from preprocessing.squad_preprocess import data_from_json, maybe_download, squad_base_url, \
     invert_map, tokenize, token_idx_map
+from utils.data_reader import preprocess_dataset
 import qa_data
 
 import logging
@@ -38,6 +39,15 @@ tf.app.flags.DEFINE_string("log_dir", "log", "Path to store log and flag files (
 tf.app.flags.DEFINE_string("vocab_path", "data/squad/vocab.dat", "Path to vocab file (default: ./data/squad/vocab.dat)")
 tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{embedding_size}.npz)")
 tf.app.flags.DEFINE_string("dev_path", "data/squad/dev-v1.1.json", "Path to the JSON dev set to evaluate against (default: ./data/squad/dev-v1.1.json)")
+
+tf.app.flags.DEFINE_string("question_maxlen", 60, "Max length of question (default: 30")
+tf.app.flags.DEFINE_string("context_maxlen", 766, "Max length of the context (default: 400)")
+tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
+tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
+tf.app.flags.DEFINE_string("log_batch_num", 1, "Number of batches to write logs on tensorboard.")
+tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
+tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
+tf.app.flags.DEFINE_string("debug_train_samples", 40, "number of samples for debug (default: None)")
 
 def initialize_model(session, model, train_dir):
     ckpt = tf.train.get_checkpoint_state(train_dir)
@@ -109,6 +119,26 @@ def prepare_dev(prefix, dev_filename, vocab):
 
     return context_data, question_data, question_uuid_data
 
+def strip(x):
+    return map(int, x.strip().split(" "))
+
+def preprocessing(context_data, question_data, context_maxlen, question_maxlen):
+    logging.debug("Preprocessing evaluation data...")
+    dataset = []
+    max_q_len = 0
+    max_c_len = 0
+    for c_data, q_data in zip(context_data, question_data):
+        question = strip(q)
+        context = strip(c)
+        answer = strip(a)
+        sample = [question, len(question), context, len(context), None]
+        dataset.append(sample)
+        max_q_len = max(max_q_len, len(question))
+        max_c_len = max(max_c_len, len(context))
+    dataset = preprocess_dataset(dataset, question_maxlen, context_maxlen)
+    logging.debug("Max question length %d" % max_q_len)
+    logging.debug("Max context length %d" % max_c_len)
+    return dataset
 
 def generate_answers(sess, model, dataset, rev_vocab):
     """
@@ -130,6 +160,21 @@ def generate_answers(sess, model, dataset, rev_vocab):
     :return:
     """
     answers = {}
+
+    mydata, context_data, context_len_data, question_uuid_data = dataset
+    pred_s, pred_e = model.predict_on_batch(sess, mydata)
+
+    for i, uuid in enumerate(question_uuid_data):
+        start = pred_s[i]
+        end = pred_e[i]
+        context_length = context_len_data[i]
+        context = context_data[i]
+        end = min(end, context_length - 1)
+        if start <= end:
+            predict_answer = ' '.join(rev_vocab[vocab_index] for vocab_index in context[start : end + 1])
+        else:
+            predict_answer = ''
+        answers[uuid] = predict_answer
 
     return answers
 
@@ -171,15 +216,19 @@ def main(_):
     dev_dirname = os.path.dirname(os.path.abspath(FLAGS.dev_path))
     dev_filename = os.path.basename(FLAGS.dev_path)
     context_data, question_data, question_uuid_data = prepare_dev(dev_dirname, dev_filename, vocab)
-    dataset = (context_data, question_data, question_uuid_data)
+    context_len_data = [len(context.split()) for context in context_data]
+    mydata = preprocessing(context_data, question_data, FLAGS.context_maxlen, FLAGS.question_maxlen)
+    dataset = (mydata, context_data, context_len_data, question_uuid_data)
 
     # ========= Model-specific =========
     # You must change the following code to adjust to your model
 
+    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
+    embeddings = load_glove_embeddings(embed_path)
     encoder = Encoder(size=FLAGS.state_size, vocab_dim=FLAGS.embedding_size)
     decoder = Decoder(output_size=FLAGS.output_size)
 
-    qa = QASystem(encoder, decoder)
+    qa = QASystem(encoder, decoder, embeddings, FLAGS)
 
     with tf.Session() as sess:
         train_dir = get_normalized_train_dir(FLAGS.train_dir)
