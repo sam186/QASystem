@@ -127,7 +127,7 @@ class Encoder(object):
                                                       sequence_length=sequence_length,
                                                       initial_state_fw=initial_state_fw,\
                                                       initial_state_bw=initial_state_bw,
-                                                      dtype=tf.float64)
+                                                      dtype=tf.float32)
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
@@ -162,8 +162,11 @@ class Decoder(object):
         logging.debug('-'*5 + 'decode' + '-'*5)
         logging.debug('Input knowledge_rep: %s' % str(knowledge_rep))
         lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=1, state_is_tuple=True)
-        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float64)
+        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float32)
         logging.debug('Hidden state: %s' % str(hidden_states))
+        xavier_initializer=tf.contrib.layers.xavier_initializer()
+        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float32)
+        preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
         start_idx = 0
         end_idx = 0
         return start_idx, end_idx
@@ -183,10 +186,10 @@ class Decoder(object):
         X = tf.reshape(X, shape = [-1, d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float32)
         tf.summary.histogram('W1', W1)
         tf.summary.histogram('W2', W2)
         tf.summary.histogram('b1', b1)
@@ -217,18 +220,16 @@ class Decoder(object):
         X = tf.reshape(X, shape = [-1, JX*d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
         tf.summary.histogram('W1', W1)
         tf.summary.histogram('W2', W2)
         tf.summary.histogram('b1', b1)
         tf.summary.histogram('b2', b2)
         pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
         pred2 = tf.matmul(X, W2)+b2 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
-        # pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
-        # pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
 
         tf.summary.histogram('logit_start', pred1)
         tf.summary.histogram('logit_end', pred2)
@@ -242,31 +243,30 @@ class Decoder(object):
         Args:
             X: [N, JX, d_en2]
         Returns:
-            pred: [N, 2, JX]
+            pred: [N, JX]*2
         """
         JX = X.get_shape().as_list()[-2]
         d = X.get_shape().as_list()[-1]
         assert X.get_shape().as_list() == [None, JX, d] 
 
-        X = tf.reshape(X, shape = [-1, d])
+        X = tf.reshape(X, shape = [-1, JX*d])
 
         xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float64)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float64)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
+        b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
         tf.summary.histogram('W1', W1)
         tf.summary.histogram('W2', W2)
         tf.summary.histogram('b1', b1)
         tf.summary.histogram('b2', b2)
-        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
-
-        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX, JX), dtype=tf.float64)
-        W_x = tf.get_variable('W_x', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX, JX), dtype=tf.float64)
-        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
-
+        pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        h0 = tf.matmul(X, W2)+b2 #[ N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
+        h = tf.concat(1,[h0, pred1]) # (concat) [h0, pred1] -> h:[N, 2*JX]
+        assert h.get_shape().as_list() == [None, 2*JX], "Expected {}, got {}".format([None, 2*JX], h.get_shape().as_list())
+        pred2 = tf.matmul(h, W_se)+b_se # [N, 2*JX]*[2*JX, JX]+[JX,] -> [N, JX]
 
         tf.summary.histogram('logit_start', pred1)
         tf.summary.histogram('logit_end', pred2)
@@ -371,7 +371,8 @@ class QASystem(object):
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
-        pred1, pred2 = self.decoder.logistic_regression_concat(m)
+        # pred1, pred2 = self.decoder.logistic_regression_concat(m)
+        pred1, pred2 = self.decoder.logistic_regression_start_end(m)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
@@ -412,7 +413,7 @@ class QASystem(object):
             if self.config.RE_TRAIN_EMBED:
                 pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
             else:
-                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float64)
+                pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
             question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
@@ -622,16 +623,19 @@ class QASystem(object):
 
         training_set = dataset['training']
         validation_set = dataset['validation']
+        sample_size = 100
+        if self.config.debug_train_samples !=None:
+            sample_size = min([sample_size, self.config.debug_train_samples])
         if self.config.tensorboard:
             train_writer_dir = self.config.log_dir + '/train/' # + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("Epoch %d out of %d", epoch + 1, self.config.epochs)
             score = self.run_epoch(session, epoch, training_set)
-            self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
+            self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
             logging.info("-- validation --")
             # self.validate(session, validation_set)
-            self.evaluate_answer(session, validation_set, vocab, sample=100, log=True)
+            self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             # Saving the model
             saver = tf.train.Saver()
             saver.save(session, train_dir+'/fancier_model')
