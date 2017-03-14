@@ -88,10 +88,11 @@ def flatten(tensor, keep):
     return flat
 
 class Encoder(object):
-    def __init__(self, vocab_dim):
+    def __init__(self, vocab_dim, state_size):
         self.vocab_dim = vocab_dim
+        self.state_size = state_size
 
-    def encode(self, inputs, mask, state_size, encoder_state_input):
+    def encode(self, inputs, mask, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
         sequence_length, and an initial hidden state input into this function.
@@ -107,9 +108,9 @@ class Encoder(object):
 
         logging.debug('-'*5 + 'encode' + '-'*5)
         # Forward direction cell
-        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
+        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
         # Backward direction cell
-        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
+        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -143,11 +144,12 @@ class Encoder(object):
 
 
 class Decoder(object):
-    def __init__(self, output_size, hidden_size):
+    def __init__(self, output_size, hidden_size, state_size):
         self.output_size = output_size
         self.hidden_size = hidden_size
+        self.state_size = state_size
 
-    def decode(self, knowledge_rep):
+    def decode(self, g, context_mask):
         """
         takes in a knowledge representation
         and output a probability estimation over
@@ -159,51 +161,51 @@ class Decoder(object):
                               decided by how you choose to implement the encoder
         :return:
         """
-        logging.debug('-'*5 + 'decode' + '-'*5)
-        logging.debug('Input knowledge_rep: %s' % str(knowledge_rep))
-        lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=1, state_is_tuple=True)
-        hidden_states, _ = tf.nn.dynamic_rnn(lstm_cell, inputs=knowledge_rep, dtype=tf.float32)
-        logging.debug('Hidden state: %s' % str(hidden_states))
-        xavier_initializer=tf.contrib.layers.xavier_initializer()
-        b = tf.get_variable("b", shape=(1,), initializer=xavier_initializer,dtype=tf.float32)
-        preds = tf.reduce_mean(tf.sigmoid(hidden_states + b), 2)
-        start_idx = 0
-        end_idx = 0
-        return start_idx, end_idx
+        d_de = self.state_size*2
+        #  m_2 = bi_LSTM*2(g)
+        with tf.variable_scope('g'):
+            m, m_repr, m_state = \
+                 self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None)
+        with tf.variable_scope('m'):    
+            m_2, m_2_repr, m_2_state = \
+                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state)
+        # assert m_2.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_de], m.get_shape().as_list())
 
-    def logistic_regression(self, X):
-        """
-        With any kind of representation, do 2 independent classifications
-        Args:
-            X: [N, JX, d_en2]
-        Returns:
-            pred: [N, 2, JX]
-        """
-        JX = X.get_shape().as_list()[-2]
-        d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d] 
+        # pred1, pred2 = self.decoder.logistic_regression_concat(m)
+        pred1, pred2 = self.logistic_regression_se_hid(m_2)
+        return (pred1, pred2)
 
-        X = tf.reshape(X, shape = [-1, d])
+    def decode_LSTM(self, inputs, mask, encoder_state_input):
+        logging.debug('-'*5 + 'decode_LSTM' + '-'*5)
+        # Forward direction cell
+        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
+        # Backward direction cell
+        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
 
-        xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float32)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(1,), dtype=tf.float32)
-        tf.summary.histogram('W1', W1)
-        tf.summary.histogram('W2', W2)
-        tf.summary.histogram('b1', b1)
-        tf.summary.histogram('b2', b2)
-        pred1 = tf.matmul(X, W1)+b1 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred2 = tf.matmul(X, W2)+b2 # [N*JX, d]*[d, 1] +[1,] -> [N*JX, 1]
-        pred1 = tf.reshape(pred1, shape = [-1, JX]) # -> [N, JX]
-        pred2 = tf.reshape(pred2, shape = [-1, JX]) # -> [N, JX]
+        initial_state_fw = None
+        initial_state_bw = None
+        if encoder_state_input is not None:
+            initial_state_fw, initial_state_bw = encoder_state_input
 
-        tf.summary.histogram('logit_start', pred1)
-        tf.summary.histogram('logit_end', pred2)
-        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
-        # assert preds.get_shape().as_list() == [None, 2, JX]
-        return pred1, pred2
+        logging.debug('Inputs: %s' % str(inputs))
+        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), axis=1)
+        sequence_length = tf.reshape(sequence_length, [-1,])
+        # Get lstm cell output
+        (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
+                                                      cell_bw=lstm_bw_cell,\
+                                                      inputs=inputs,\
+                                                      sequence_length=sequence_length,
+                                                      initial_state_fw=initial_state_fw,\
+                                                      initial_state_bw=initial_state_bw,
+                                                      dtype=tf.float32)
+
+        logging.debug('fw hidden state: %s' % str(outputs_fw))
+        hidden_state = tf.concat(2, [outputs_fw, outputs_bw])
+        logging.debug('Concatenated bi-LSTM hidden state: %s' % str(hidden_state))
+        # final_state_fw and final_state_bw are the final states of the forwards/backwards LSTM
+        concat_final_state = tf.concat(1, [final_state_fw[1], final_state_bw[1]])
+        logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
+        return hidden_state, concat_final_state, (final_state_fw, final_state_bw)
 
     def logistic_regression_concat(self, X):
         """
@@ -378,23 +380,17 @@ class QASystem(object):
         #         e.g. h = encode_context(x, u_state)   # get H (2d*T) as representation of x
         with tf.variable_scope('q'):
             u, question_repr, u_state = \
-                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, state_size=self.config.state_size, encoder_state_input=None)
+                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None)
             if self.config.QA_ENCODER_SHARE:
                 tf.get_variable_scope().reuse_variables()
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, state_size=self.config.state_size, encoder_state_input=u_state)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
         if not self.config.QA_ENCODER_SHARE:
             with tf.variable_scope('c'):
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, state_size=self.config.state_size, encoder_state_input=u_state)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
-        
-        d_en = self.config.state_size*2
-        # ---------- opt2 ------------
-        # d_en = d
-        # h = x
-        # u = q
-        # -------- opt2 end ---------- 
+        d_en = self.config.encoder_state_size*2
         assert h.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
         assert u.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], u.get_shape().as_list())
 
@@ -407,30 +403,15 @@ class QASystem(object):
         #              h_hat = sum(a_q*h)
         #              g = combine(u, h, u_hat, h_hat)
         g = self.attention.calculate(h, u) # concat[h, u_a]
-
         d_com = d_en*2
         assert g.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
 
-        # Step 3: farther encode
-        #              m = encode(g), !later bi_LSTM*2
-        en2_state_size = int(self.config.state_size)
-        with tf.variable_scope('g'):
-            m, m_repr, m_state = \
-                 self.encoder.encode(inputs=g, mask=self.context_mask_placeholder, state_size=en2_state_size, encoder_state_input=None)
-        with tf.variable_scope('m'):    
-            m_2, m_2_repr, m_2_state = \
-                 self.encoder.encode(inputs=m, mask=self.context_mask_placeholder, state_size=en2_state_size, encoder_state_input=m_state)
-        d_en2 = en2_state_size*2
-        assert m_2.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_en2], m.get_shape().as_list())
-
-        # Step 4: decode
-        #         e.g. pred_start = decode_start(G)
-        #         e.g. pred_end = decode_end(G)
-        # pred1, pred2 = self.decoder.logistic_regression_concat(m)
-        pred1, pred2 = self.decoder.logistic_regression_se_hid(m_2)
+        # Step 3:
+        # 2 LSTM layers
+        # logistic regressions
+        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
-        # raise NotImplementedError("Connect all parts of your system here!")
         return pred1, pred2
 
 
@@ -482,6 +463,21 @@ class QASystem(object):
             context_embeddings = tf.reshape(context_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size * self.config.n_features])
 
         return question_embeddings, context_embeddings
+
+    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
+        feed_dict = {}
+        feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
+        feed_dict[self.context_placeholder] = context_batch
+        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
+        if answer_batch is not None:
+            start = answer_batch[:,0]
+            end = answer_batch[:,1]
+            # start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
+            # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
+            feed_dict[self.answer_start_placeholders] = start
+            feed_dict[self.answer_end_placeholders] = end
+        return feed_dict
 
     def optimize(self, session, training_set):
         """
@@ -618,21 +614,6 @@ class QASystem(object):
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
 
         return f1, em
-
-    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
-        feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
-        if answer_batch is not None:
-            start = answer_batch[:,0]
-            end = answer_batch[:,1]
-            # start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
-            # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
-            feed_dict[self.answer_start_placeholders] = start
-            feed_dict[self.answer_end_placeholders] = end
-        return feed_dict
 
     def run_epoch(self, session, epoch_num, training_set, vocab):
         batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
