@@ -475,9 +475,12 @@ class QASystem(object):
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
+        batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
+        prog = Progbar(target=batch_num)
         predict_s, predict_e = [], []
         for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
             s, e = self.answer(session, batch)
+            prog.update(i + 1)
             predict_s.extend(s)
             predict_e.extend(e)
         return predict_s, predict_e
