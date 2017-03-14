@@ -1,8 +1,7 @@
 *.pdf
 tmp/*
-./download/*
+download/*
 *.pyc
-./log/*
 data/*
-log/
+log/*
 train/*
