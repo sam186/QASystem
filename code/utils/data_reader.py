@@ -73,6 +73,7 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
     train = []
     max_q_len = 0
     max_c_len = 0
+    max_ans_end = 0
     logger.info("Loading training data...")
     with gfile.GFile(config.train_question_file, mode="rb") as q_file, \
          gfile.GFile(config.train_context_file, mode="rb") as c_file, \
@@ -81,6 +82,10 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 question = strip(q)
                 context = strip(c)
                 answer = strip(a)
+                max_ans_end = max(max_ans_end, answer[1])
+                # ignore examples that have answers outside context_maxlen
+                if context_maxlen is not None and max_ans_end >= context_maxlen:
+                    continue
                 sample = [question, len(question), context, len(context), answer]
                 train.append(sample)
                 max_q_len = max(max_q_len, len(question))
@@ -98,6 +103,10 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 question = strip(q)
                 context = strip(c)
                 answer = strip(a)
+                max_ans_end = max(max_ans_end, answer[1])
+                # ignore examples that have answers outside context_maxlen
+                if context_maxlen is not None and max_ans_end >= context_maxlen:
+                    continue
                 sample = [question, len(question), context, len(context), answer]
                 val.append(sample)
                 max_q_len = max(max_q_len, len(question))
@@ -107,6 +116,7 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
     logger.info("Finish loading %d validation data." % len(val))
     logger.info("Max question length %d" % max_q_len)
     logger.info("Max context length %d" % max_c_len)
+    logger.info("Max answer end %d" % max_ans_end)
 
     if question_maxlen is None:
         question_maxlen = max_q_len
