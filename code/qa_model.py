@@ -464,6 +464,21 @@ class QASystem(object):
 
         return question_embeddings, context_embeddings
 
+    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
+        feed_dict = {}
+        feed_dict[self.question_placeholder] = question_batch
+        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
+        feed_dict[self.context_placeholder] = context_batch
+        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
+        if answer_batch is not None:
+            start = answer_batch[:,0]
+            end = answer_batch[:,1]
+            # start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
+            # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
+            feed_dict[self.answer_start_placeholders] = start
+            feed_dict[self.answer_end_placeholders] = end
+        return feed_dict
+
     def optimize(self, session, training_set):
         """
         Takes in actual data to optimize your model
@@ -599,21 +614,6 @@ class QASystem(object):
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
 
         return f1, em
-
-    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
-        feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
-        if answer_batch is not None:
-            start = answer_batch[:,0]
-            end = answer_batch[:,1]
-            # start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
-            # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
-            feed_dict[self.answer_start_placeholders] = start
-            feed_dict[self.answer_end_placeholders] = end
-        return feed_dict
 
     def run_epoch(self, session, epoch_num, training_set, vocab):
         batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
