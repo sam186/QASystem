@@ -16,7 +16,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.01, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.003, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
 tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_string("question_maxlen", None, "Max length of question (def
 tf.app.flags.DEFINE_string("context_maxlen", None, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
-tf.app.flags.DEFINE_string("log_batch_num", 100, "Number of batches to write logs on tensorboard.")
+tf.app.flags.DEFINE_string("log_batch_num", 10, "Number of batches to write logs on tensorboard.")
 tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden_size.")
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
@@ -102,7 +102,7 @@ def main(_):
     if FLAGS.question_maxlen is None:
         FLAGS.question_maxlen = dataset['question_maxlen']
     if FLAGS.debug_train_samples is not None:
-        FLAGS.log_batch_num = min([FLAGS.log_batch_num, FLAGS.debug_train_samples])
+        FLAGS.log_batch_num = min([FLAGS.log_batch_num, FLAGS.debug_train_samples//FLAGS.batch_size])
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
