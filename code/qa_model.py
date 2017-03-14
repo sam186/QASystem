@@ -556,8 +556,8 @@ class QASystem(object):
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
 
-        f1 = f1 / sample
-        em = em / sample
+        f1 = 100 * f1 / sample
+        em = 100 * em / sample
 
         if log:
             logging.info("F1: {}, EM: {}, for {} samples".format(f1, em, sample))
@@ -644,7 +644,7 @@ class QASystem(object):
             score = self.run_epoch(session, epoch, training_set)
             self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
             logging.info("-- validation --")
-            # self.validate(session, validation_set)
+            self.validate(session, validation_set)
             self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             # Saving the model
             saver = tf.train.Saver()
