@@ -538,11 +538,11 @@ class QASystem(object):
 
     def predict_on_batch(self, session, dataset):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
-        prog = Progbar(target=batch_num)
+        # prog = Progbar(target=batch_num)
         predict_s, predict_e = [], []
         for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
             s, e = self.answer(session, batch)
-            prog.update(i + 1)
+            # prog.update(i + 1)
             predict_s.extend(s)
             predict_e.extend(e)
         return predict_s, predict_e
@@ -641,11 +641,12 @@ class QASystem(object):
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
             global_batch_num = batch_num * epoch_num + i
             _, summary, loss = self.optimize(session, batch)
+            prog.update(i + 1, [("training loss", loss)])
             if self.config.tensorboard and global_batch_num % self.config.log_batch_num == 0:
                 self.train_writer.add_summary(summary, global_batch_num)
-            if global_batch_num % self.config.log_batch_num == 0:
+            if (i+1) % self.config.log_batch_num == 0:
+                logging.info('')
                 self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
-            prog.update(i + 1, [("training loss", loss)])
             avg_loss += loss
         avg_loss /= batch_num
         logging.info("Average training loss: {}".format(avg_loss))
