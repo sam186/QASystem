@@ -105,7 +105,7 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 answer = strip(a)
                 max_ans_end = max(max_ans_end, answer[1])
                 # ignore examples that have answers outside context_maxlen
-                if context_maxlen is not None and max_ans_end >= context_maxlen:
+                if context_maxlen is not None and answer[1] >= context_maxlen:
                     continue
                 sample = [question, len(question), context, len(context), answer]
                 val.append(sample)
