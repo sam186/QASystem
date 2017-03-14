@@ -66,18 +66,18 @@ class Attention(object):
         assert h.get_shape().as_list() == [None, JX, d_en]
         assert u.get_shape().as_list() == [None, JQ, d_en]
 
-        h = tf.reshape(h, shape = [-1, JX, 1, d_en])
-        u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
-        s = tf.reduce_sum(tf.multiply(h, u), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
+        h_aug = tf.reshape(h, shape = [-1, JX, 1, d_en])
+        u_aug = tf.reshape(u, shape = [-1, 1, JQ, d_en])
+        s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
         a_x = tf.nn.softmax(s, dim=-1) # softmax -> [N, JX, softmax(JQ)]
         assert a_x.get_shape().as_list() == [None, JX, JQ]
 
         a_x = tf.reshape(a_x, shape = [-1, JX, JQ, 1])
-        u = tf.reshape(u, shape = [-1, 1, JQ, d_en])
-        u_a = tf.reduce_sum(tf.multiply(a_x, u), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
+        u_aug = tf.reshape(u_aug, shape = [-1, 1, JQ, d_en])
+        u_a = tf.reduce_sum(tf.multiply(a_x, u_aug), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
         assert u_a.get_shape().as_list() == [None, JX, d_en]
         logging.debug('Context with attention: %s' % str(u_a))
-        return u_a
+        return tf.concat(2,[h, u_a])
 
 def flatten(tensor, keep):
     fixed_shape = tensor.get_shape().as_list()
@@ -88,11 +88,10 @@ def flatten(tensor, keep):
     return flat
 
 class Encoder(object):
-    def __init__(self, size, vocab_dim):
-        self.size = size
+    def __init__(self, vocab_dim):
         self.vocab_dim = vocab_dim
 
-    def encode(self, inputs, mask, encoder_state_input):
+    def encode(self, inputs, mask, state_size, encoder_state_input):
         """
         In a generalized encode function, you pass in your inputs,
         sequence_length, and an initial hidden state input into this function.
@@ -108,9 +107,9 @@ class Encoder(object):
 
         logging.debug('-'*5 + 'encode' + '-'*5)
         # Forward direction cell
-        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
+        lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
         # Backward direction cell
-        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.size, state_is_tuple=True)
+        lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -144,8 +143,9 @@ class Encoder(object):
 
 
 class Decoder(object):
-    def __init__(self, output_size):
+    def __init__(self, output_size, hidden_size):
         self.output_size = output_size
+        self.hidden_size = hidden_size
 
     def decode(self, knowledge_rep):
         """
@@ -274,6 +274,52 @@ class Decoder(object):
         # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
 
+    def logistic_regression_se_hid(self, X):
+        """
+        With any kind of representation, do 2 independent classifications
+        Args:
+            X: [N, JX, d_en2]
+        Returns:
+            pred: [N, JX]*2
+        """
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        H_size = self.hidden_size
+        assert X.get_shape().as_list() == [None, JX, d] 
+
+        X = tf.reshape(X, shape = [-1, JX*d])
+
+        xavier_initializer = tf.contrib.layers.xavier_initializer
+        W1_h = tf.get_variable('W1_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, H_size), dtype=tf.float32)
+        b1_h = tf.get_variable('b1_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size,), dtype=tf.float32)
+        W2_h = tf.get_variable('W2_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, H_size), dtype=tf.float32)
+        b2_h = tf.get_variable('b2_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size,), dtype=tf.float32)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size, JX), dtype=tf.float32)
+        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size, JX), dtype=tf.float32)
+        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        pred1_h = tf.matmul(X, W1_h)+b1_h # [N, JX*d]*[JX*d, H_size] +[H_size,] -> [N, H_size]
+        pred1 = tf.matmul(pred1_h, W1)+b1 # [N, H_size]*[H_size, JX] +[JX,] -> [N, JX]
+        h0_h = tf.matmul(X, W2_h)+b2_h #[ N, JX*d]*[JX*d, H_size] +[H_size,] -> [N, H_size]
+        h0 = tf.matmul(h0_h, W2)+b2 #[ N, H_size]*[H_size, JX] +[JX,] -> [N, JX]
+        
+
+        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
+        b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        tf.summary.histogram('W1', W1)
+        tf.summary.histogram('W2', W2)
+        tf.summary.histogram('b1', b1)
+        tf.summary.histogram('b2', b2)
+        h = tf.concat(1,[h0, pred1]) # (concat) [h0, pred1] -> h:[N, 2*JX]
+        assert h.get_shape().as_list() == [None, 2*JX], "Expected {}, got {}".format([None, 2*JX], h.get_shape().as_list())
+        pred2 = tf.matmul(h, W_se)+b_se # [N, 2*JX]*[2*JX, JX]+[JX,] -> [N, JX]
+
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
+        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
+        # assert preds.get_shape().as_list() == [None, 2, JX]
+        return pred1, pred2
+
 class QASystem(object):
     def __init__(self, encoder, decoder, pretrained_embeddings, config):
         """
@@ -332,13 +378,18 @@ class QASystem(object):
         #         e.g. h = encode_context(x, u_state)   # get H (2d*T) as representation of x
         with tf.variable_scope('q'):
             u, question_repr, u_state = \
-                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None)
-        with tf.variable_scope('c'):
-            h, context_repr, context_state =\
-                 self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
+                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, state_size=self.config.state_size, encoder_state_input=None)
+            if self.config.QA_ENCODER_SHARE:
+                tf.get_variable_scope().reuse_variables()
+                h, context_repr, context_state =\
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, state_size=self.config.state_size, encoder_state_input=u_state)
+        if not self.config.QA_ENCODER_SHARE:
+            with tf.variable_scope('c'):
+                h, context_repr, context_state =\
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, state_size=self.config.state_size, encoder_state_input=u_state)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         
-        d_en = 4*d
+        d_en = self.config.state_size*2
         # ---------- opt2 ------------
         # d_en = d
         # h = x
@@ -355,24 +406,28 @@ class QASystem(object):
         #              u_hat = sum(a_x*u)
         #              h_hat = sum(a_q*h)
         #              g = combine(u, h, u_hat, h_hat)
-        g = self.attention.calculate(h, u)
+        g = self.attention.calculate(h, u) # concat[h, u_a]
 
-        d_com = d_en
+        d_com = d_en*2
         assert g.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
 
         # Step 3: farther encode
         #              m = encode(g), !later bi_LSTM*2
+        en2_state_size = int(self.config.state_size)
         with tf.variable_scope('g'):
             m, m_repr, m_state = \
-                 self.encoder.encode(inputs=g, mask=self.context_mask_placeholder, encoder_state_input=None)
-        d_en2 = d_com
-        assert m.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_en2], m.get_shape().as_list())
+                 self.encoder.encode(inputs=g, mask=self.context_mask_placeholder, state_size=en2_state_size, encoder_state_input=None)
+        with tf.variable_scope('m'):    
+            m_2, m_2_repr, m_2_state = \
+                 self.encoder.encode(inputs=m, mask=self.context_mask_placeholder, state_size=en2_state_size, encoder_state_input=m_state)
+        d_en2 = en2_state_size*2
+        assert m_2.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_en2], m.get_shape().as_list())
 
         # Step 4: decode
         #         e.g. pred_start = decode_start(G)
         #         e.g. pred_end = decode_end(G)
         # pred1, pred2 = self.decoder.logistic_regression_concat(m)
-        pred1, pred2 = self.decoder.logistic_regression_start_end(m)
+        pred1, pred2 = self.decoder.logistic_regression_se_hid(m_2)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         # raise NotImplementedError("Connect all parts of your system here!")
@@ -390,19 +445,19 @@ class QASystem(object):
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         with vs.variable_scope("loss"):
             s, e = preds
-            mask = tf.cast(self.context_mask_placeholder, 'float32')
-            neg_mask = tf.subtract(tf.constant(1.0), mask)
-            neg_mask = tf.multiply(tf.constant(1e6),neg_mask)
+            mask = self.context_mask_placeholder
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             assert mask.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], mask.get_shape().as_list())
-            # assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
-            
+             
             # e = tf.boolean_mask(e, mask)
             # s = tf.boolean_mask(s, mask)
-            e = tf.subtract(e, neg_mask)
-            s = tf.subtract(s, neg_mask)
+            m0 = tf.subtract(tf.constant(1.0),tf.cast(mask, 'float32'))
+            paddings = tf.multiply(m0,tf.constant(-1e10))
+            s = tf.select(mask, s, paddings)
+            e = tf.select(mask, e, paddings)
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
+            assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
             loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
@@ -418,7 +473,7 @@ class QASystem(object):
         """
         with vs.variable_scope("embeddings"):
             if self.config.RE_TRAIN_EMBED:
-                pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb")
+                pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb", dtype=tf.float32)
             else:
                 pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
@@ -649,3 +704,4 @@ class QASystem(object):
             # Saving the model
             saver = tf.train.Saver()
             saver.save(session, train_dir+'/fancier_model')
+            logging.info('')
