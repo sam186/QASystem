@@ -21,7 +21,8 @@ tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this nor
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
 tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 10, "Number of epochs to train.")
-tf.app.flags.DEFINE_integer("state_size", 100, "Size of each model layer.")
+tf.app.flags.DEFINE_integer("encoder_state_size", 100, "Size of each encoder model layer.")
+tf.app.flags.DEFINE_integer("decoder_state_size", 100, "Size of each decoder model layer.")
 tf.app.flags.DEFINE_integer("output_size", 750, "The output size of your model.")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
 tf.app.flags.DEFINE_string("data_dir", "data/squad", "SQuAD directory (default ./data/squad)")
@@ -94,11 +95,14 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    dataset = read_data(FLAGS.data_dir, small_dir=5, small_val=100, debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100)
+    dataset = read_data(FLAGS.data_dir, small_dir=5, small_val=100, \
+        debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
         FLAGS.question_maxlen = dataset['question_maxlen']
+    if FLAGS.debug_train_samples is not None:
+        FLAGS.log_batch_num = min([FLAGS.log_batch_num, FLAGS.debug_train_samples])
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
@@ -106,8 +110,8 @@ def main(_):
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
 
-    encoder = Encoder(vocab_dim=FLAGS.embedding_size)
-    decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size)
+    encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
+    decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
 
     qa = QASystem(encoder, decoder, embeddings, FLAGS)
 
