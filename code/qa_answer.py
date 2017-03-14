@@ -17,7 +17,7 @@ import tensorflow as tf
 from qa_model import Encoder, QASystem, Decoder
 from preprocessing.squad_preprocess import data_from_json, maybe_download, squad_base_url, \
     invert_map, tokenize, token_idx_map
-from utils.data_reader import preprocess_dataset
+from utils.data_reader import preprocess_dataset, load_glove_embeddings
 import qa_data
 
 import logging
@@ -40,21 +40,20 @@ tf.app.flags.DEFINE_string("vocab_path", "data/squad/vocab.dat", "Path to vocab 
 tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{embedding_size}.npz)")
 tf.app.flags.DEFINE_string("dev_path", "data/squad/dev-v1.1.json", "Path to the JSON dev set to evaluate against (default: ./data/squad/dev-v1.1.json)")
 
-tf.app.flags.DEFINE_string("question_maxlen", 60, "Max length of question (default: 30")
-tf.app.flags.DEFINE_string("context_maxlen", 766, "Max length of the context (default: 400)")
+tf.app.flags.DEFINE_string("question_maxlen", 38, "Max length of question (default: 30")
+tf.app.flags.DEFINE_string("context_maxlen", 99, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
-tf.app.flags.DEFINE_string("log_batch_num", 1, "Number of batches to write logs on tensorboard.")
-tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
-tf.app.flags.DEFINE_string("debug_train_samples", 40, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd")
 
 def initialize_model(session, model, train_dir):
     ckpt = tf.train.get_checkpoint_state(train_dir)
     v2_path = ckpt.model_checkpoint_path + ".index" if ckpt else ""
     if ckpt and (tf.gfile.Exists(ckpt.model_checkpoint_path) or tf.gfile.Exists(v2_path)):
         logging.info("Reading model parameters from %s" % ckpt.model_checkpoint_path)
-        model.saver.restore(session, ckpt.model_checkpoint_path)
+        saver = tf.train.Saver()
+        saver.restore(session, ckpt.model_checkpoint_path)
     else:
         logging.info("Created model with fresh parameters.")
         session.run(tf.global_variables_initializer())
@@ -128,9 +127,8 @@ def preprocessing(context_data, question_data, context_maxlen, question_maxlen):
     max_q_len = 0
     max_c_len = 0
     for c_data, q_data in zip(context_data, question_data):
-        question = strip(q)
-        context = strip(c)
-        answer = strip(a)
+        question = strip(q_data)
+        context = strip(c_data)
         sample = [question, len(question), context, len(context), None]
         dataset.append(sample)
         max_q_len = max(max_q_len, len(question))
@@ -168,7 +166,7 @@ def generate_answers(sess, model, dataset, rev_vocab):
         start = pred_s[i]
         end = pred_e[i]
         context_length = context_len_data[i]
-        context = context_data[i]
+        context = strip(context_data[i])
         end = min(end, context_length - 1)
         if start <= end:
             predict_answer = ' '.join(rev_vocab[vocab_index] for vocab_index in context[start : end + 1])
