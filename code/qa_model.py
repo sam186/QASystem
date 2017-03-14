@@ -291,9 +291,9 @@ class QASystem(object):
 
         # ==== set up placeholder tokens ========
         self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen, config.n_features))
-        self.question_mask_placeholder = tf.placeholder(dtype=tf.int32, name="q_mask", shape=(None, config.question_maxlen, config.n_features))
+        self.question_mask_placeholder = tf.placeholder(dtype=tf.bool, name="q_mask", shape=(None, config.question_maxlen))
         self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
-        self.context_mask_placeholder = tf.placeholder(dtype=tf.int32, name="c_mask", shape=(None, config.context_maxlen, config.n_features))
+        self.context_mask_placeholder = tf.placeholder(dtype=tf.bool, name="c_mask", shape=(None, config.context_maxlen))
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
         self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None,))
@@ -390,14 +390,21 @@ class QASystem(object):
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         with vs.variable_scope("loss"):
             s, e = preds
+            mask = tf.cast(self.context_mask_placeholder, 'float32')
+            neg_mask = tf.subtract(tf.constant(1.0), mask)
+            neg_mask = tf.multiply(tf.constant(1e6),neg_mask)
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
-            # assert self.answer_start_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_start_placeholders.get_shape().as_list())
-            # assert self.answer_end_placeholders.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
-            # loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(preds, self.answer_placeholders),)  
+            assert mask.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], mask.get_shape().as_list())
+            # assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
+            
+            # e = tf.boolean_mask(e, mask)
+            # s = tf.boolean_mask(s, mask)
+            e = tf.subtract(e, neg_mask)
+            s = tf.subtract(s, neg_mask)
+            assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
-
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
         loss = loss1 + loss2
@@ -554,9 +561,9 @@ class QASystem(object):
     def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_mask_placeholder] = question_mask_batch
+        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
         feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_mask_placeholder] = context_mask_batch
+        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
         if answer_batch is not None:
             start = answer_batch[:,0]
             end = answer_batch[:,1]

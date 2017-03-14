@@ -41,7 +41,7 @@ tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent th
 tf.app.flags.DEFINE_string("log_batch_num", 1, "Number of batches to write logs on tensorboard.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
-tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("debug_train_samples", 100, "number of samples for debug (default: None)")
 
 
 FLAGS = tf.app.flags.FLAGS
