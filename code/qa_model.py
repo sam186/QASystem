@@ -519,11 +519,11 @@ class QASystem(object):
 
     def predict_on_batch(self, session, dataset):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
-        prog = Progbar(target=batch_num)
+        # prog = Progbar(target=batch_num)
         predict_s, predict_e = [], []
         for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
             s, e = self.answer(session, batch)
-            prog.update(i + 1)
+            # prog.update(i + 1)
             predict_s.extend(s)
             predict_e.extend(e)
         return predict_s, predict_e
@@ -622,11 +622,12 @@ class QASystem(object):
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
             global_batch_num = batch_num * epoch_num + i
             _, summary, loss = self.optimize(session, batch)
+            prog.update(i + 1, [("training loss", loss)])
             if self.config.tensorboard and global_batch_num % self.config.log_batch_num == 0:
                 self.train_writer.add_summary(summary, global_batch_num)
-            if global_batch_num % self.config.log_batch_num == 0  and global_batch_num>0:
+            if (i+1) % self.config.log_batch_num == 0:
+                logging.info('')
                 self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
-            prog.update(i + 1, [("training loss", loss)])
             avg_loss += loss
         avg_loss /= batch_num
         logging.info("Average training loss: {}".format(avg_loss))
@@ -672,6 +673,7 @@ class QASystem(object):
         training_set = dataset['training']
         validation_set = dataset['validation']
         sample_size = 100
+        f1_best = 0
         if self.config.debug_train_samples !=None:
             sample_size = min([sample_size, self.config.debug_train_samples])
         if self.config.tensorboard:
@@ -680,11 +682,13 @@ class QASystem(object):
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
             score = self.run_epoch(session, epoch, training_set, vocab)
-            self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
             logging.info("-- validation --")
             self.validate(session, validation_set)
-            self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
+            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             # Saving the model
-            saver = tf.train.Saver()
-            saver.save(session, train_dir+'/fancier_model')
+            if f1>f1_best:
+                f1_best = f1
+                saver = tf.train.Saver()
+                saver.save(session, train_dir+'/fancier_model')
+                logging.info('New best f1 in val set')
             logging.info('')
