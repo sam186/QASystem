@@ -689,7 +689,6 @@ class QASystem(object):
         training_set = dataset['training']
         validation_set = dataset['validation']
         sample_size = 100
-        best_f1 = 0
         if self.config.debug_train_samples !=None:
             sample_size = min([sample_size, self.config.debug_train_samples])
         if self.config.tensorboard:
@@ -701,11 +700,8 @@ class QASystem(object):
             self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
             logging.info("-- validation --")
             self.validate(session, validation_set)
-            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
+            self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             # Saving the model
-            if f1>best_f1:
-                best_f1 = f1
-                logging.info('New best F1 on val set')
-                saver = tf.train.Saver()
-                saver.save(session, train_dir+'/fancier_model')
+            saver = tf.train.Saver()
+            saver.save(session, train_dir+'/fancier_model')
             logging.info('')
