@@ -81,7 +81,7 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train'
+    global_train_dir = '/tmp/cs224n-squad-train_yw'
     if os.path.exists(global_train_dir):
         os.unlink(global_train_dir)
     if not os.path.exists(train_dir):
@@ -94,7 +94,7 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    dataset = read_data(FLAGS.data_dir, small_dir=10, small_val=100, debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100)
+    dataset = read_data(FLAGS.data_dir, small_dir=None, small_val=None, debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100)
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
