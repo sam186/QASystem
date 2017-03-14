@@ -37,12 +37,19 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
+def softmax_mask_prepro(tensor, mask): # set huge neg number(-1e10) in padding area
+    assert tensor.get_shape().as_list() == mask.get_shape().as_list()
+     
+    m0 = tf.subtract(tf.constant(1.0), tf.cast(mask, 'float32'))
+    paddings = tf.multiply(m0,tf.constant(-1e10))
+    tensor = tf.select(mask, tensor, paddings)
+    return tensor
 
 class Attention(object):
     def __init__(self, config):
         self.config = config
 
-    def calculate(self, h, u):
+    def calculate(self, h, u, h_mask, u_mask):
         # compare the question representation with all the context hidden states.
         #         e.g. S = h.T * u
         #              a_x = softmax(S)
@@ -66,18 +73,44 @@ class Attention(object):
         assert h.get_shape().as_list() == [None, JX, d_en]
         assert u.get_shape().as_list() == [None, JQ, d_en]
 
+        # get similarity
         h_aug = tf.reshape(h, shape = [-1, JX, 1, d_en])
         u_aug = tf.reshape(u, shape = [-1, 1, JQ, d_en])
+        h_mask_aug = tf.tile(tf.expand_dims(h_mask, -1), [1, 1, JQ]) # [N, JX] -(expend)-> [N, JX, 1] -(tile)-> [N, JX, JQ]
+        u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
+        assert h_mask_aug.get_shape().as_list() == [None, JX, JQ], "Expected {}, got {}".format([None, JX, JQ], h_mask_aug.get_shape().as_list())
+        assert u_mask_aug.get_shape().as_list() == [None, JX, JQ], "Expected {}, got {}".format([None, JX, JQ], u_mask_aug.get_shape().as_list())
         s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
+        hu_mask_aug = h_mask_aug & u_mask_aug
+        s = softmax_mask_prepro(s, hu_mask_aug)
+        
+        # get a_x 
         a_x = tf.nn.softmax(s, dim=-1) # softmax -> [N, JX, softmax(JQ)]
         assert a_x.get_shape().as_list() == [None, JX, JQ]
-
+        #     use a_x to get u_a
         a_x = tf.reshape(a_x, shape = [-1, JX, JQ, 1])
         u_aug = tf.reshape(u_aug, shape = [-1, 1, JQ, d_en])
         u_a = tf.reduce_sum(tf.multiply(a_x, u_aug), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
         assert u_a.get_shape().as_list() == [None, JX, d_en]
         logging.debug('Context with attention: %s' % str(u_a))
-        return tf.concat(2,[h, u_a])
+
+        # get a_q
+        a_q = tf.reduce_max(s, axis=-1) # max -> [N, JX]
+        a_q = tf.nn.softmax(a_q, dim=-1) # softmax -> [N, softmax(JX)]
+        #     use a_q to get h_a
+        a_q = tf.reshape(a_q, shape = [-1, JX, 1])
+        h_aug = tf.reshape(h, shape = [-1, JX, d_en])
+
+        h_a = tf.reduce_sum(tf.multiply(a_q, h_aug), axis = -2)# a_q * h: [N, JX](weight) * [N, JX, d_en] -> [N, d_en]
+        assert h_a.get_shape().as_list() == [None, d_en]
+        h_a = tf.tile(tf.expand_dims(h_a, -2), [1, JX, 1])
+        assert h_a.get_shape().as_list() == [None, JX, d_en]
+
+        h_0_u_a = h*u_a
+        h_0_h_a = h*h_a
+        assert h_0_u_a.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, JQ, d_en], h_0_u_a.get_shape().as_list())
+        assert h_0_h_a.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, JQ, d_en], h_0_h_a.get_shape().as_list())
+        return tf.concat(2,[h, u_a, h_0_u_a, h_0_h_a])
 
 def flatten(tensor, keep):
     fixed_shape = tensor.get_shape().as_list()
@@ -402,8 +435,10 @@ class QASystem(object):
         #              u_hat = sum(a_x*u)
         #              h_hat = sum(a_q*h)
         #              g = combine(u, h, u_hat, h_hat)
-        g = self.attention.calculate(h, u) # concat[h, u_a]
-        d_com = d_en*2
+        # --------op1--------------
+        g = self.attention.calculate(h, u, self.context_mask_placeholder, self.question_mask_placeholder) # concat[h, u_a, h*u_a, h*h_a]
+        d_com = d_en*4
+
         assert g.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
 
         # Step 3:
@@ -429,14 +464,9 @@ class QASystem(object):
             mask = self.context_mask_placeholder
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
-            assert mask.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], mask.get_shape().as_list())
              
-            # e = tf.boolean_mask(e, mask)
-            # s = tf.boolean_mask(s, mask)
-            m0 = tf.subtract(tf.constant(1.0),tf.cast(mask, 'float32'))
-            paddings = tf.multiply(m0,tf.constant(-1e10))
-            s = tf.select(mask, s, paddings)
-            e = tf.select(mask, e, paddings)
+            s = softmax_mask_prepro(s, mask)
+            e = softmax_mask_prepro(e, mask)
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
             loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
