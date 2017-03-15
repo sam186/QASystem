@@ -411,8 +411,8 @@ class QASystem(object):
         # get_op = get_optimizer(self.config.optimizer)
         # self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
         global_step = tf.Variable(0, trainable=False)
-        learning_rate = tf.train.exponential_decay(self.starter_learning_rate, global_step, 100000, 0.96, staircase=True)
-        self.train_op = get_new_optimizer("adam", self.loss, self.max_grad_norm, learning_rate)
+        learning_rate = tf.train.exponential_decay(self.config.learning_rate, global_step, 100000, 0.96, staircase=True)
+        self.train_op = get_new_optimizer("adam", self.loss, self.config.max_gradient_norm, learning_rate)
         self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
