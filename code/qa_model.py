@@ -82,7 +82,7 @@ class Attention(object):
         assert u_mask_aug.get_shape().as_list() == [None, JX, JQ], "Expected {}, got {}".format([None, JX, JQ], u_mask_aug.get_shape().as_list())
         s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
-        s = softmax_mask_prepro(s, hu_mask_aug)
+        # s = softmax_mask_prepro(s, hu_mask_aug)
         
         # get a_x 
         a_x = tf.nn.softmax(s, dim=-1) # softmax -> [N, JX, softmax(JQ)]
@@ -465,8 +465,8 @@ class QASystem(object):
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
              
-            s = softmax_mask_prepro(s, mask)
-            e = softmax_mask_prepro(e, mask)
+            # s = softmax_mask_prepro(s, mask)
+            # e = softmax_mask_prepro(e, mask)
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
             loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
