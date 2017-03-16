@@ -205,8 +205,8 @@ class Decoder(object):
         # assert m_2.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_de], m.get_shape().as_list())
 
         # pred1, pred2 = self.decoder.logistic_regression_concat(m)
-        pred1, pred2 = self.logistic_regression_se_hid(m_2)
-        # pred1, pred2 = self.get_logit(m_2)
+       # pred1, pred2 = self.logistic_regression_se_hid(m_2)
+        pred1, pred2 = self.get_logit(m_2)
         return (pred1, pred2)
 
     def decode_LSTM(self, inputs, mask, encoder_state_input):
