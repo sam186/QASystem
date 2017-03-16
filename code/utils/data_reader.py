@@ -36,32 +36,23 @@ def load_glove_embeddings(embed_path):
     return glove
 
 def add_paddings(sentence, max_length, n_features=1):
-    zero_vector = [0] * n_features
-    mask = [[True]] * len(sentence)
+    mask = [True] * len(sentence)
     pad_len = max_length - len(sentence)
     if pad_len > 0:
-        padded_sentence = sentence + [zero_vector] * pad_len
-        mask += [[False]] * pad_len
+        padded_sentence = sentence + [0] * pad_len
+        mask += [False] * pad_len
     else:
         padded_sentence = sentence[:max_length]
         mask = mask[:max_length]
     return padded_sentence, mask
 
-def featurize_paragraph(paragraph, paragraph_length):
-    # TODO: Split by sentence instead of word
-    sentences = [[word] for word in paragraph]
-    return sentences
-
 def preprocess_dataset(dataset, question_maxlen, context_maxlen):
     processed = []
     for q, q_len, c, c_len, ans in dataset:
-        q_sentences = featurize_paragraph(q, q_len)
-        c_sentences = featurize_paragraph(c, c_len)
-
         # add padding:
-        q_sentences, q_mask = add_paddings(q_sentences, question_maxlen)
-        c_sentences, c_mask = add_paddings(c_sentences, context_maxlen)
-        processed.append([q_sentences, q_mask, c_sentences, c_mask, ans])
+        q_padded, q_mask = add_paddings(q, question_maxlen)
+        c_padded, c_mask = add_paddings(c, context_maxlen)
+        processed.append([q_padded, q_mask, c_padded, c_mask, ans])
     return processed
 
 def strip(x):
@@ -73,6 +64,7 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
     train = []
     max_q_len = 0
     max_c_len = 0
+    max_ans_end = 0
     logger.info("Loading training data...")
     with gfile.GFile(config.train_question_file, mode="rb") as q_file, \
          gfile.GFile(config.train_context_file, mode="rb") as c_file, \
@@ -81,6 +73,10 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 question = strip(q)
                 context = strip(c)
                 answer = strip(a)
+                max_ans_end = max(max_ans_end, answer[1])
+                # ignore examples that have answers outside context_maxlen
+                if context_maxlen is not None and answer[1] >= context_maxlen:
+                    continue
                 sample = [question, len(question), context, len(context), answer]
                 train.append(sample)
                 max_q_len = max(max_q_len, len(question))
@@ -98,6 +94,10 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 question = strip(q)
                 context = strip(c)
                 answer = strip(a)
+                max_ans_end = max(max_ans_end, answer[1])
+                # ignore examples that have answers outside context_maxlen
+                if context_maxlen is not None and answer[1] >= context_maxlen:
+                    continue
                 sample = [question, len(question), context, len(context), answer]
                 val.append(sample)
                 max_q_len = max(max_q_len, len(question))
@@ -107,6 +107,7 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
     logger.info("Finish loading %d validation data." % len(val))
     logger.info("Max question length %d" % max_q_len)
     logger.info("Max context length %d" % max_c_len)
+    logger.info("Max answer end %d" % max_ans_end)
 
     if question_maxlen is None:
         question_maxlen = max_q_len
