@@ -685,7 +685,7 @@ class QASystem(object):
 
         return f1, em
 
-    def run_epoch(self, session, epoch_num, training_set, vocab, sample_size=100):
+    def run_epoch(self, session, epoch_num, training_set, vocab, sample_size=100, validation_set):
         batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
         prog = Progbar(target=batch_num)
         avg_loss = 0
@@ -698,6 +698,7 @@ class QASystem(object):
             if (i+1) % self.config.log_batch_num == 0:
                 logging.info('')
                 self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
+                self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             avg_loss += loss
         avg_loss /= batch_num
         logging.info("Average training loss: {}".format(avg_loss))
@@ -751,7 +752,7 @@ class QASystem(object):
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, epoch, training_set, vocab, sample_size=sample_size)
+            score = self.run_epoch(session, epoch, training_set, vocab, sample_size=sample_size, validation_set)
             logging.info("-- validation --")
             self.validate(session, validation_set)
             f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
