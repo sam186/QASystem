@@ -371,9 +371,9 @@ class QASystem(object):
         self.attention = Attention(config)
 
         # ==== set up placeholder tokens ========
-        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen, config.n_features))
+        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen))
         self.question_mask_placeholder = tf.placeholder(dtype=tf.bool, name="q_mask", shape=(None, config.question_maxlen))
-        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
+        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen))
         self.context_mask_placeholder = tf.placeholder(dtype=tf.bool, name="c_mask", shape=(None, config.context_maxlen))
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
@@ -497,9 +497,9 @@ class QASystem(object):
     def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
+        feed_dict[self.question_mask_placeholder] = question_mask_batch
         feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
+        feed_dict[self.context_mask_placeholder] = context_mask_batch
         if answer_batch is not None:
             start = answer_batch[:,0]
             end = answer_batch[:,1]
@@ -566,7 +566,7 @@ class QASystem(object):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
         # prog = Progbar(target=batch_num)
         predict_s, predict_e = [], []
-        for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
+        for i, batch in enumerate(minibatches(dataset, self.config.batch_size, shuffle=False)):
             s, e = self.answer(session, batch)
             # prog.update(i + 1)
             predict_s.extend(s)
@@ -627,7 +627,7 @@ class QASystem(object):
             # TODO: should be handled by decoder.
             context_len = np.sum(c_mask)
             end = min(end, context_len - 1)
-            context_words = [vocab[w[0]] for w in c]
+            context_words = [vocab[w] for w in c]
 
             true_answer = ' '.join(context_words[true_s : true_e + 1])
             if start <= end:

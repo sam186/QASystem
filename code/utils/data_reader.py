@@ -36,32 +36,23 @@ def load_glove_embeddings(embed_path):
     return glove
 
 def add_paddings(sentence, max_length, n_features=1):
-    zero_vector = [0] * n_features
-    mask = [[True]] * len(sentence)
+    mask = [True] * len(sentence)
     pad_len = max_length - len(sentence)
     if pad_len > 0:
-        padded_sentence = sentence + [zero_vector] * pad_len
-        mask += [[False]] * pad_len
+        padded_sentence = sentence + [0] * pad_len
+        mask += [False] * pad_len
     else:
         padded_sentence = sentence[:max_length]
         mask = mask[:max_length]
     return padded_sentence, mask
 
-def featurize_paragraph(paragraph, paragraph_length):
-    # TODO: Split by sentence instead of word
-    sentences = [[word] for word in paragraph]
-    return sentences
-
 def preprocess_dataset(dataset, question_maxlen, context_maxlen):
     processed = []
     for q, q_len, c, c_len, ans in dataset:
-        q_sentences = featurize_paragraph(q, q_len)
-        c_sentences = featurize_paragraph(c, c_len)
-
         # add padding:
-        q_sentences, q_mask = add_paddings(q_sentences, question_maxlen)
-        c_sentences, c_mask = add_paddings(c_sentences, context_maxlen)
-        processed.append([q_sentences, q_mask, c_sentences, c_mask, ans])
+        q_padded, q_mask = add_paddings(q, question_maxlen)
+        c_padded, c_mask = add_paddings(c, context_maxlen)
+        processed.append([q_padded, q_mask, c_padded, c_mask, ans])
     return processed
 
 def strip(x):

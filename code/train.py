@@ -44,7 +44,7 @@ tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
-tf.app.flags.DEFINE_string("debug_train_samples", 200, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("debug_train_samples", 10, "number of samples for debug (default: None)")
 
 
 FLAGS = tf.app.flags.FLAGS
