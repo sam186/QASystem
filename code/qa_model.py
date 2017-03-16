@@ -37,7 +37,7 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
-def get_new_optimizer(opt, loss, max_grad_norm, learning_rate=0.01):
+def get_new_optimizer(opt, loss, max_grad_norm, learning_rate):
     if opt == "adam":
         optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
     elif opt == "sgd":
@@ -60,7 +60,7 @@ def get_new_optimizer(opt, loss, max_grad_norm, learning_rate=0.01):
 
 def softmax_mask_prepro(tensor, mask): # set huge neg number(-1e10) in padding area
     assert tensor.get_shape().as_list() == mask.get_shape().as_list()
-     
+
     m0 = tf.subtract(tf.constant(1.0), tf.cast(mask, 'float32'))
     paddings = tf.multiply(m0,tf.constant(-1e10))
     tensor = tf.select(mask, tensor, paddings)
@@ -103,9 +103,10 @@ class Attention(object):
         assert u_mask_aug.get_shape().as_list() == [None, JX, JQ], "Expected {}, got {}".format([None, JX, JQ], u_mask_aug.get_shape().as_list())
         s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
-        # s = softmax_mask_prepro(s, hu_mask_aug)
-        
-        # get a_x 
+
+        s = softmax_mask_prepro(s, hu_mask_aug)
+
+        # get a_x
         a_x = tf.nn.softmax(s, dim=-1) # softmax -> [N, JX, softmax(JQ)]
         assert a_x.get_shape().as_list() == [None, JX, JQ]
         #     use a_x to get u_a
@@ -220,13 +221,14 @@ class Decoder(object):
         with tf.variable_scope('g'):
             m, m_repr, m_state = \
                  self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None)
-        with tf.variable_scope('m'):    
+        with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
                  self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state)
         # assert m_2.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_de], m.get_shape().as_list())
 
         # pred1, pred2 = self.decoder.logistic_regression_concat(m)
-        pred1, pred2 = self.logistic_regression_se_hid(m_2)
+       # pred1, pred2 = self.logistic_regression_se_hid(m_2)
+        pred1, pred2 = self.get_logit(m_2)
         return (pred1, pred2)
 
     def decode_LSTM(self, inputs, mask, encoder_state_input):
@@ -261,6 +263,20 @@ class Decoder(object):
         logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
         return hidden_state, concat_final_state, (final_state_fw, final_state_bw)
 
+    def get_logit(self, X):
+        JX = X.get_shape().as_list()[-2]
+        d = X.get_shape().as_list()[-1]
+        assert X.get_shape().as_list() == [None, JX, d]
+        X = tf.reshape(X, shape = [-1, d])
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        pred1 = tf.matmul(X, W1)
+        pred2= tf.matmul(X, W2)
+        pred1 = tf.reshape(pred1, shape = [-1, JX])
+        pred2 = tf.reshape(pred2, shape = [-1, JX])
+        return pred1, pred2
+
+
     def logistic_regression_concat(self, X):
         """
         With any kind of representation, do 2 independent classifications
@@ -271,7 +287,7 @@ class Decoder(object):
         """
         JX = X.get_shape().as_list()[-2]
         d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d] 
+        assert X.get_shape().as_list() == [None, JX, d]
 
         X = tf.reshape(X, shape = [-1, JX*d])
 
@@ -303,7 +319,7 @@ class Decoder(object):
         """
         JX = X.get_shape().as_list()[-2]
         d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d] 
+        assert X.get_shape().as_list() == [None, JX, d]
 
         X = tf.reshape(X, shape = [-1, JX*d])
 
@@ -341,7 +357,7 @@ class Decoder(object):
         JX = X.get_shape().as_list()[-2]
         d = X.get_shape().as_list()[-1]
         H_size = self.hidden_size
-        assert X.get_shape().as_list() == [None, JX, d] 
+        assert X.get_shape().as_list() == [None, JX, d]
 
         X = tf.reshape(X, shape = [-1, JX*d])
 
@@ -358,7 +374,7 @@ class Decoder(object):
         pred1 = tf.matmul(pred1_h, W1)+b1 # [N, H_size]*[H_size, JX] +[JX,] -> [N, JX]
         h0_h = tf.matmul(X, W2_h)+b2_h #[ N, JX*d]*[JX*d, H_size] +[H_size,] -> [N, H_size]
         h0 = tf.matmul(h0_h, W2)+b2 #[ N, H_size]*[H_size, JX] +[JX,] -> [N, JX]
-        
+
 
         W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
         b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
@@ -399,7 +415,7 @@ class QASystem(object):
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
         self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None,))
-        
+
 
         # ==== assemble pieces ====
         with tf.variable_scope("qa", initializer=tf.uniform_unit_scaling_initializer(1.0)):
@@ -488,9 +504,10 @@ class QASystem(object):
             mask = self.context_mask_placeholder
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
-             
-            # s = softmax_mask_prepro(s, mask)
-            # e = softmax_mask_prepro(e, mask)
+
+
+            s = softmax_mask_prepro(s, mask)
+            e = softmax_mask_prepro(e, mask)
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
             loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
@@ -568,7 +585,7 @@ class QASystem(object):
         """
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = test_batch
         input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None)
-        
+
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
 
