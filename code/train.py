@@ -16,7 +16,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.003, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
 tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
@@ -44,7 +44,7 @@ tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
-tf.app.flags.DEFINE_string("debug_train_samples", 10, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("debug_train_samples", 100, "number of samples for debug (default: None)")
 
 
 FLAGS = tf.app.flags.FLAGS
