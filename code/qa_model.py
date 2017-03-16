@@ -392,9 +392,9 @@ class QASystem(object):
         self.attention = Attention(config)
 
         # ==== set up placeholder tokens ========
-        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen, config.n_features))
+        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen))
         self.question_mask_placeholder = tf.placeholder(dtype=tf.bool, name="q_mask", shape=(None, config.question_maxlen))
-        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen, config.n_features))
+        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen))
         self.context_mask_placeholder = tf.placeholder(dtype=tf.bool, name="c_mask", shape=(None, config.context_maxlen))
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
@@ -521,9 +521,9 @@ class QASystem(object):
     def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_mask_placeholder] = question_mask_batch[:,:,0]
+        feed_dict[self.question_mask_placeholder] = question_mask_batch
         feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_mask_placeholder] = context_mask_batch[:,:,0]
+        feed_dict[self.context_mask_placeholder] = context_mask_batch
         if answer_batch is not None:
             start = answer_batch[:,0]
             end = answer_batch[:,1]
@@ -579,18 +579,21 @@ class QASystem(object):
         return outputs
 
     def answer(self, session, test_sample):
-        yp, yp2 = self.decode(session, test_sample)
-
-        a_s = np.argmax(yp, axis=1)
-        a_e = np.argmax(yp2, axis=1)
-
+        s, e = self.decode(session, test_sample)
+        _, _, _, mask, _ = test_sample
+        s[np.invert(mask)]=-1e10
+        e[np.invert(mask)]=-1e10
+        a_s = np.argmax(s, axis=1)
+        a_e = np.argmax(e, axis=1)
+        # _, _, _, _, ans = test_sample
+        # print((a_s, a_e), ans)
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
         # prog = Progbar(target=batch_num)
         predict_s, predict_e = [], []
-        for i, batch in enumerate(minibatches(dataset, self.config.batch_size)):
+        for i, batch in enumerate(minibatches(dataset, self.config.batch_size, shuffle=False)):
             s, e = self.answer(session, batch)
             # prog.update(i + 1)
             predict_s.extend(s)
@@ -640,18 +643,14 @@ class QASystem(object):
         em = 0.
 
         N = len(dataset)
-        sampleIndices = np.random.choice(N, sample)
+        sampleIndices = np.random.choice(N, sample, replace=False)
         evaluate_set = [dataset[i] for i in sampleIndices]
         predict_s, predict_e = self.predict_on_batch(session, evaluate_set)
 
         for example, start, end in zip(evaluate_set, predict_s, predict_e):
-            q, q_mask, c, c_mask, (true_s, true_e) = example
-
-            # remove paddings in answer
-            # TODO: should be handled by decoder.
-            context_len = np.sum(c_mask)
-            end = min(end, context_len - 1)
-            context_words = [vocab[w[0]] for w in c]
+            q, _, c, _, (true_s, true_e) = example
+            # print (start, end, true_s, true_e)
+            context_words = [vocab[w] for w in c]
 
             true_answer = ' '.join(context_words[true_s : true_e + 1])
             if start <= end:
@@ -669,7 +668,7 @@ class QASystem(object):
 
         return f1, em
 
-    def run_epoch(self, session, epoch_num, training_set, vocab):
+    def run_epoch(self, session, epoch_num, training_set, vocab, sample_size=100):
         batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
         prog = Progbar(target=batch_num)
         avg_loss = 0
@@ -681,7 +680,7 @@ class QASystem(object):
                 self.train_writer.add_summary(summary, global_batch_num)
             if (i+1) % self.config.log_batch_num == 0:
                 logging.info('')
-                self.evaluate_answer(session, training_set, vocab, sample=100, log=True)
+                self.evaluate_answer(session, training_set, vocab, sample=sample_size, log=True)
             avg_loss += loss
         avg_loss /= batch_num
         logging.info("Average training loss: {}".format(avg_loss))
@@ -735,7 +734,7 @@ class QASystem(object):
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, epoch, training_set, vocab)
+            score = self.run_epoch(session, epoch, training_set, vocab, sample_size=sample_size)
             logging.info("-- validation --")
             self.validate(session, validation_set)
             f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)

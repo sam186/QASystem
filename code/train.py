@@ -36,15 +36,15 @@ tf.app.flags.DEFINE_string("vocab_path", "data/squad/vocab.dat", "Path to vocab 
 tf.app.flags.DEFINE_string("embed_path", "", "Path to the trimmed GLoVe embedding (default: ./data/squad/glove.trimmed.{embedding_size}.npz)")
 
 tf.app.flags.DEFINE_string("question_maxlen", None, "Max length of question (default: 30")
-tf.app.flags.DEFINE_string("context_maxlen", None, "Max length of the context (default: 400)")
+tf.app.flags.DEFINE_string("context_maxlen", 300, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
-tf.app.flags.DEFINE_string("log_batch_num", 10, "Number of batches to write logs on tensorboard.")
+tf.app.flags.DEFINE_string("log_batch_num", 100, "Number of batches to write logs on tensorboard.")
 tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden_size.")
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
-tf.app.flags.DEFINE_string("debug_train_samples", 200, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -95,8 +95,9 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    dataset = read_data(FLAGS.data_dir, small_dir=5, small_val=100, \
-        debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
+    # dataset = read_data(FLAGS.data_dir, small_dir=5, small_val=100, \
+        # debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
+    dataset = read_data(FLAGS.data_dir, context_maxlen=FLAGS.context_maxlen)
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
