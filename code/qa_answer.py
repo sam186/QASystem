@@ -48,6 +48,7 @@ tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each positio
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd")
+tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden_size.")
 
 def initialize_model(session, model, train_dir):
     ckpt = tf.train.get_checkpoint_state(train_dir)
