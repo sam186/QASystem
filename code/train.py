@@ -16,11 +16,11 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.003, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
-tf.app.flags.DEFINE_integer("epochs", 10, "Number of epochs to train.")
+tf.app.flags.DEFINE_integer("batch_size", 40, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("epochs", 25, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("encoder_state_size", 100, "Size of each encoder model layer.")
 tf.app.flags.DEFINE_integer("decoder_state_size", 100, "Size of each decoder model layer.")
 tf.app.flags.DEFINE_integer("output_size", 750, "The output size of your model.")
@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_string("question_maxlen", None, "Max length of question (def
 tf.app.flags.DEFINE_string("context_maxlen", None, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("n_features", 1, "Number of features for each position in the sentence.")
 tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent the answer.")
-tf.app.flags.DEFINE_string("log_batch_num", 10, "Number of batches to write logs on tensorboard.")
+tf.app.flags.DEFINE_string("log_batch_num", 100, "Number of batches to write logs on tensorboard.")
 tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden_size.")
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
@@ -82,7 +82,7 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train'
+    global_train_dir = '/tmp/cs224n-squad-train-fei'
     if os.path.exists(global_train_dir):
         os.unlink(global_train_dir)
     if not os.path.exists(train_dir):
@@ -95,14 +95,16 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    dataset = read_data(FLAGS.data_dir, small_dir=5, small_val=100, \
-        debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
+    #dataset = read_data(FLAGS.data_dir, small_dir=None, small_val=None, \
+    #    debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
+    dataset = read_data(FLAGS.data_dir, context_maxlen=FLAGS.context_maxlen)
+
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
         FLAGS.question_maxlen = dataset['question_maxlen']
     if FLAGS.debug_train_samples is not None:
-        FLAGS.log_batch_num = min([FLAGS.log_batch_num, FLAGS.debug_train_samples//FLAGS.batch_size])
+        FLAGS.log_batch_num = max([FLAGS.log_batch_num, FLAGS.debug_train_samples//FLAGS.batch_size])
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
@@ -125,7 +127,7 @@ def main(_):
         json.dump(FLAGS.__flags, fout)
 
     gpu_options = tf.GPUOptions()
-    gpu_options.allow_growth=True
+    #gpu_options.allow_growth=True
 
     with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
         load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
