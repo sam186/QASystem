@@ -9,3 +9,4 @@ cl run --name run-predict --request-docker-image sckoo/cs224n-squad:v4-0.12.1 :c
 
 cl info --verbose run-predict
 
+cl wait --tail run-predict
