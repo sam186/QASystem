@@ -134,10 +134,10 @@ class Encoder(object):
     def __init__(self, vocab_dim, state_size, dropout = 0):
         self.vocab_dim = vocab_dim
         self.state_size = state_size
-        self.dropout = dropout
-        logging.info("Dropout rate for encoder: {}".format(self.dropout))
+        #self.dropout = dropout
+        #logging.info("Dropout rate for encoder: {}".format(self.dropout))
 
-    def encode(self, inputs, mask, encoder_state_input):
+    def encode(self, inputs, mask, encoder_state_input, dropout = 1.0):
         """
         In a generalized encode function, you pass in your inputs,
         sequence_length, and an initial hidden state input into this function.
@@ -158,8 +158,8 @@ class Encoder(object):
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
 
 
-        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
-        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
+        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
+        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -193,13 +193,11 @@ class Encoder(object):
 
 
 class Decoder(object):
-    def __init__(self, output_size, hidden_size, state_size, dropout = 0.):
+    def __init__(self, output_size, hidden_size, state_size):
         self.output_size = output_size
         self.state_size = state_size
-        self.dropout = dropout
-        logging.info("Dropout rate for decoder: {}".format(self.dropout))
 
-    def decode(self, g, context_mask):
+    def decode(self, g, context_mask, dropout = 1.0):
         """
         takes in a knowledge representation
         and output a probability estimation over
@@ -211,10 +209,10 @@ class Decoder(object):
         d_de = self.state_size*2
         with tf.variable_scope('g'):
             m, m_repr, m_state = \
-                 self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None)
+                 self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None, dropout = dropout)
         with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
-                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state)
+                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout)
         # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
         s, e = self.get_logit(m_2) #[N, JX]*2
@@ -227,7 +225,7 @@ class Decoder(object):
         # e = tf.Print(e, [e], summarize = 100)
         return (s, e)
 
-    def decode_LSTM(self, inputs, mask, encoder_state_input):
+    def decode_LSTM(self, inputs, mask, encoder_state_input, dropout = 1.0):
         logging.debug('-'*5 + 'decode_LSTM' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
@@ -236,8 +234,8 @@ class Decoder(object):
 
         # add dropout
 
-        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
-        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
+        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
+        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -342,6 +340,7 @@ class QASystem(object):
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
         self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None,))
+        self.dropout_placeholder = tf.placeholder(dtype=tf.float32, name="dropout", shape=())
 
 
         # ==== assemble pieces ====
@@ -375,15 +374,15 @@ class QASystem(object):
         #         e.g. h = encode_context(x, u_state)   # get H (2d*T) as representation of x
         with tf.variable_scope('q'):
             u, question_repr, u_state = \
-                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None)
+                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None, dropout = self.dropout_placeholder)
             if self.config.QA_ENCODER_SHARE:
                 tf.get_variable_scope().reuse_variables()
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
         if not self.config.QA_ENCODER_SHARE:
             with tf.variable_scope('c'):
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         d_en = self.config.encoder_state_size*2
         assert h.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
@@ -406,7 +405,7 @@ class QASystem(object):
         # Step 3:
         # 2 LSTM layers
         # logistic regressions
-        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder)
+        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder, dropout = self.dropout_placeholder)
         assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
         assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
         return pred1, pred2
@@ -426,8 +425,8 @@ class QASystem(object):
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
-            loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
-            loss2 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
+            loss1 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
+            loss2 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             # loss2 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
         loss = loss1 + loss2
@@ -451,7 +450,7 @@ class QASystem(object):
 
         return question_embeddings, context_embeddings
 
-    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None):
+    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None, is_train = True):
         feed_dict = {}
         feed_dict[self.question_placeholder] = question_batch
         feed_dict[self.question_mask_placeholder] = question_mask_batch
@@ -464,6 +463,11 @@ class QASystem(object):
             # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
             feed_dict[self.answer_start_placeholders] = start
             feed_dict[self.answer_end_placeholders] = end
+        if is_train:
+            feed_dict[self.dropout_placeholder] = 0.85
+        else:
+            feed_dict[self.dropout_placeholder] = 1.0
+
         return feed_dict
 
     def optimize(self, session, training_set):
@@ -473,7 +477,7 @@ class QASystem(object):
         :return:
         """
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
-        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
+        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch, is_train = True)
 
         output_feed = [self.train_op, self.merged, self.loss]
 
@@ -487,7 +491,7 @@ class QASystem(object):
         :return:
         """
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = validation_set
-        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch)
+        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch, is_train = False)
 
         output_feed = [self.loss]
         outputs = session.run(output_feed, input_feed)
@@ -500,7 +504,7 @@ class QASystem(object):
         :return:
         """
         question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = test_batch
-        input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None)
+        input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None, is_train = False)
 
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
@@ -513,11 +517,11 @@ class QASystem(object):
 
     def answer(self, session, test_sample):
         s, e = self.decode(session, test_sample)
-       
+
         a_s = np.argmax(s, axis=1)
         a_e = np.argmax(e, axis=1)
         _, _, _, _, ans = test_sample
-        print((a_s, a_e), ans)
+        #print((a_s, a_e), ans)
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
