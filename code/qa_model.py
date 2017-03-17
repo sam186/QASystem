@@ -363,13 +363,12 @@ class QASystem(object):
         # global_step = tf.Variable(0, trainable=False)
         # learning_rate = tf.train.exponential_decay(self.config.learning_rate, global_step, 100000, 0.96, staircase=True)
         opt_op = get_optimizer("adam", self.loss, config.max_gradient_norm, config.learning_rate)
+
         if config.ema_weight_decay is not None:
             self.train_op = self.build_ema(opt_op)
         else:
             self.train_op = opt_op
-
         self.merged = tf.summary.merge_all()
-
 
     def build_ema(self, opt_op):
         self.ema = tf.train.ExponentialMovingAverage(self.config.ema_weight_decay)
@@ -377,6 +376,7 @@ class QASystem(object):
         with tf.control_dependencies([opt_op]):
             train_op = tf.group(ema_op)
         return train_op
+
 
     def setup_system(self, x, q):
         """
@@ -540,7 +540,6 @@ class QASystem(object):
         a_s = np.argmax(s, axis=1)
         a_e = np.argmax(e, axis=1)
         _, _, _, _, ans = test_sample
-        print((a_s, a_e), ans)
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
