@@ -37,30 +37,18 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
-def softmax_mask_prepro(tensor, mask, direction=None): # set huge neg number(-1e10) in padding area or start area
-    if tensor.get_shape().ndims == mask.get_shape().ndims+1 and (direction is not None):
-        # tensor: [N, JX],        mask(start_index): [N]
-        JX = tensor.get_shape().as_list()[-1]
-        tmp_mask = tf.tile(tf.expand_dims(mask, axis = -1), [1, JX]) #->[N, JX]
-        idx = tf.expand_dims(tf.range(JX), axis = 0) #[1, JX]
-        if direction=='l':
-            mask_org = mask
-            mask = (tmp_mask<=idx)
-
-    assert tensor.get_shape().as_list() == mask.get_shape().as_list(), "got {}".format(mask.get_shape().as_list())
-
+def softmax_mask_prepro(tensor, mask): # set huge neg number(-1e10) in padding area
+    assert tensor.get_shape().ndims == mask.get_shape().ndims
     m0 = tf.subtract(tf.constant(1.0), tf.cast(mask, 'float32'))
     paddings = tf.multiply(m0,tf.constant(-1e10))
     tensor = tf.select(mask, tensor, paddings)
-    if direction=='l':
-        tensor = tf.Print(tensor, [mask_org, tensor], summarize = 200)
     return tensor
 
 class Attention(object):
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
+        pass
 
-    def calculate(self, h, u, h_mask, u_mask):
+    def calculate(self, h, u, h_mask, u_mask, JX, JQ):
         # compare the question representation with all the context hidden states.
         #         e.g. S = h.T * u
         #              a_x = softmax(S)
@@ -78,30 +66,26 @@ class Attention(object):
         logging.debug('-'*5 + 'attention' + '-'*5)
         logging.debug('Context representation: %s' % str(h))
         logging.debug('Question representation: %s' % str(u))
-        JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         d_en = h.get_shape().as_list()[-1]
-        assert h.get_shape().as_list() == [None, JX, d_en]
-        assert u.get_shape().as_list() == [None, JQ, d_en]
+        # h [None, JX, d_en]
+        # u [None, JQ, d_en]
 
         # get similarity
         h_aug = tf.reshape(h, shape = [-1, JX, 1, d_en])
         u_aug = tf.reshape(u, shape = [-1, 1, JQ, d_en])
         h_mask_aug = tf.tile(tf.expand_dims(h_mask, -1), [1, 1, JQ]) # [N, JX] -(expend)-> [N, JX, 1] -(tile)-> [N, JX, JQ]
         u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
-        assert h_mask_aug.get_shape().as_list() == [None, JX, JQ], "Expected {}, got {}".format([None, JX, JQ], h_mask_aug.get_shape().as_list())
-        assert u_mask_aug.get_shape().as_list() == [None, JX, JQ], "Expected {}, got {}".format([None, JX, JQ], u_mask_aug.get_shape().as_list())
         s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
         s = softmax_mask_prepro(s, hu_mask_aug)
 
         # get a_x
         a_x = tf.nn.softmax(s, dim=-1) # softmax -> [N, JX, softmax(JQ)]
-        assert a_x.get_shape().as_list() == [None, JX, JQ]
+
         #     use a_x to get u_a
         a_x = tf.reshape(a_x, shape = [-1, JX, JQ, 1])
         u_aug = tf.reshape(u_aug, shape = [-1, 1, JQ, d_en])
         u_a = tf.reduce_sum(tf.multiply(a_x, u_aug), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
-        assert u_a.get_shape().as_list() == [None, JX, d_en]
         logging.debug('Context with attention: %s' % str(u_a))
 
         # get a_q
@@ -113,22 +97,19 @@ class Attention(object):
 
         h_a = tf.reduce_sum(tf.multiply(a_q, h_aug), axis = -2)# a_q * h: [N, JX](weight) * [N, JX, d_en] -> [N, d_en]
         assert h_a.get_shape().as_list() == [None, d_en]
-        h_a = tf.tile(tf.expand_dims(h_a, -2), [1, JX, 1])
-        assert h_a.get_shape().as_list() == [None, JX, d_en]
+        h_a = tf.tile(tf.expand_dims(h_a, -2), [1, JX, 1]) # [None, JX, d_en]
 
-        h_0_u_a = h*u_a
-        h_0_h_a = h*h_a
-        assert h_0_u_a.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, JQ, d_en], h_0_u_a.get_shape().as_list())
-        assert h_0_h_a.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, JQ, d_en], h_0_h_a.get_shape().as_list())
+        h_0_u_a = h*u_a #[None, JX, d_en]
+        h_0_h_a = h*h_a #[None, JX, d_en]
         return tf.concat(2,[h, u_a, h_0_u_a, h_0_h_a])
 
-def flatten(tensor, keep):
-    fixed_shape = tensor.get_shape().as_list()
-    start = len(fixed_shape) - keep
-    left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
-    out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
-    flat = tf.reshape(tensor, out_shape)
-    return flat
+# def flatten(tensor, keep):
+#     fixed_shape = tensor.get_shape().as_list()
+#     start = len(fixed_shape) - keep
+#     left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
+#     out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
+#     flat = tf.reshape(tensor, out_shape)
+#     return flat
 
 class Encoder(object):
     def __init__(self, vocab_dim, state_size, dropout = 0):
@@ -180,8 +161,6 @@ class Encoder(object):
 
         # Concatinate forward and backword hidden output vectors.
         # each vector is of size [batch_size, sequence_length, cell_state_size]
-        # outputs_fw = tf.Print(outputs_fw, [outputs_fw])
-        # final_state_fw = tf.Print(final_state_fw, [final_state_fw])
 
         logging.debug('fw hidden state: %s' % str(outputs_fw))
         hidden_state = tf.concat(2, [outputs_fw, outputs_bw])
@@ -193,11 +172,11 @@ class Encoder(object):
 
 
 class Decoder(object):
-    def __init__(self, output_size, hidden_size, state_size):
+    def __init__(self, output_size, state_size):
         self.output_size = output_size
         self.state_size = state_size
 
-    def decode(self, g, context_mask, dropout = 1.0):
+    def decode(self, g, context_mask, JX, dropout = 1.0):
         """
         takes in a knowledge representation
         and output a probability estimation over
@@ -215,14 +194,10 @@ class Decoder(object):
                  self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout)
         # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
-        s, e = self.get_logit(m_2) #[N, JX]*2
-        # s, e = self.get_logit_start_end(m_2) #[N, JX]*2
+        s, e = self.get_logit(m_2, JX) #[N, JX]*2
+        # or s, e = self.get_logit_start_end(m_2) #[N, JX]*2
         s = softmax_mask_prepro(s, context_mask)
         e = softmax_mask_prepro(e, context_mask)
-
-        # arg_s = tf.cast(tf.argmax(s, axis=1), 'int32') #[N]
-        # e = softmax_mask_prepro(e, arg_s, direction = 'l')
-        # e = tf.Print(e, [e], summarize = 100)
         return (s, e)
 
     def decode_LSTM(self, inputs, mask, encoder_state_input, dropout = 1.0):
@@ -262,10 +237,9 @@ class Decoder(object):
         logging.debug('Concatenated bi-LSTM final hidden state: %s' % str(concat_final_state))
         return hidden_state, concat_final_state, (final_state_fw, final_state_bw)
 
-    def get_logit(self, X):
-        JX = X.get_shape().as_list()[-2]
+    def get_logit(self, X, JX):
         d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d]
+        assert X.get_shape().ndims == 3
         X = tf.reshape(X, shape = [-1, d])
         W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
         W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
@@ -273,12 +247,13 @@ class Decoder(object):
         pred2= tf.matmul(X, W2)
         pred1 = tf.reshape(pred1, shape = [-1, JX])
         pred2 = tf.reshape(pred2, shape = [-1, JX])
+        tf.summary.histogram('logit_start', pred1)
+        tf.summary.histogram('logit_end', pred2)
         return pred1, pred2
 
-    def get_logit_start_end(self, X):
-        JX = X.get_shape().as_list()[-2]
+    def get_logit_start_end(self, X, JX):
         d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d]
+        X = tf.reshape(X, shape = [-1, d])
         X = tf.reshape(X, shape = [-1, d])
         W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
         W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
@@ -291,34 +266,10 @@ class Decoder(object):
         W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
         b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
         pred2 = tf.matmul(pred2_1, W_se)+b_se
-
-        return pred1, pred2
-
-    def logistic_regression_start_end(self, X):
-        JX = X.get_shape().as_list()[-2]
-        d = X.get_shape().as_list()[-1]
-        assert X.get_shape().as_list() == [None, JX, d]
-
-        X = tf.reshape(X, shape = [-1, JX*d])
-
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
-        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
-        b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        pred1 = tf.matmul(X, W1) # [N, JX, d]*[d, 1]  -> [N, JX]
-        h0 = tf.matmul(X, W2) #[ N, JX, d]*[d, 1]  -> [N, JX]
-        h = tf.concat(1,[h0, pred1]) # (concat) [h0, pred1] -> h:[N, 2*JX]
-        assert h.get_shape().as_list() == [None, 2*JX], "Expected {}, got {}".format([None, 2*JX], h.get_shape().as_list())
-        pred2 = tf.matmul(h, W_se)+b_se # [N, 2*JX]*[2*JX, JX]+[JX,] -> [N, JX]
-
-        tf.summary.histogram('logit_start', pred1)
-        tf.summary.histogram('logit_end', pred2)
-        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
-        # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
 
 class QASystem(object):
-    def __init__(self, encoder, decoder, pretrained_embeddings, config):
+    def __init__(self, pretrained_embeddings, config):
         """
         Initializes your System
 
@@ -327,20 +278,22 @@ class QASystem(object):
         :param args: pass in more arguments as needed
         """
         self.pretrained_embeddings = pretrained_embeddings
-        self.encoder = encoder
-        self.decoder = decoder
+        self.encoder = Encoder(vocab_dim=config.embedding_size, state_size = config.encoder_state_size)
+        self.decoder = Decoder(output_size=config.output_size, state_size = config.decoder_state_size)
+        self.attention = Attention()
         self.config = config
-        self.attention = Attention(config)
 
         # ==== set up placeholder tokens ========
-        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, config.question_maxlen))
-        self.question_mask_placeholder = tf.placeholder(dtype=tf.bool, name="q_mask", shape=(None, config.question_maxlen))
-        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, config.context_maxlen))
-        self.context_mask_placeholder = tf.placeholder(dtype=tf.bool, name="c_mask", shape=(None, config.context_maxlen))
+        self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, None))
+        self.question_mask_placeholder = tf.placeholder(dtype=tf.bool, name="q_mask", shape=(None, None))
+        self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, None))
+        self.context_mask_placeholder = tf.placeholder(dtype=tf.bool, name="c_mask", shape=(None, None))
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
         self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None,))
         self.dropout_placeholder = tf.placeholder(dtype=tf.float32, name="dropout", shape=())
+        self.JX = tf.placeholder(dtype=tf.int32, name='JX', shape=())
+        self.JQ = tf.placeholder(dtype=tf.int32, name='JQ', shape=())
 
 
         # ==== assemble pieces ====
@@ -355,19 +308,11 @@ class QASystem(object):
         self.merged = tf.summary.merge_all()
 
     def setup_system(self, x, q):
-        """
-        After your modularized implementation of encoder and decoder
-        you should call various functions inside encoder, decoder here
-        to assemble your reading comprehension system!
-        """
-        JX, JQ = self.config.context_maxlen, self.config.question_maxlen
-        d = x.get_shape().as_list()[-1] # self.config.embedding_size * self.config.n_features
-        d_ans = self.config.answer_size
-        # Args:
+        d = x.get_shape().as_list()[-1] # self.config.embedding_size
             #   x: [None, JX, d]
             #   q: [None, JQ, d]
-        assert x.get_shape().as_list() == [None, JX, d], "Expected {}, got {}".format([None, JX, d], x.get_shape().as_list())
-        assert q.get_shape().as_list() == [None, JQ, d], "Expected {}, got {}".format([None, JX, d], q.get_shape().as_list())
+        assert x.get_shape().ndims == 3
+        assert q.get_shape().ndims == 3
 
         # Step 1: encode x and q, respectively, with independent weights
         #         e.g. u = encode_question(q)  # get U (2d*J) as representation of q
@@ -385,8 +330,8 @@ class QASystem(object):
                      self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         d_en = self.config.encoder_state_size*2
-        assert h.get_shape().as_list() == [None, JX, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
-        assert u.get_shape().as_list() == [None, JQ, d_en], "Expected {}, got {}".format([None, JQ, d_en], u.get_shape().as_list())
+        assert h.get_shape().as_list() == [None, None, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
+        assert u.get_shape().as_list() == [None, None, d_en], "Expected {}, got {}".format([None, JQ, d_en], u.get_shape().as_list())
 
 
         # Step 2: combine H and U using "Attention"
@@ -397,34 +342,21 @@ class QASystem(object):
         #              h_hat = sum(a_q*h)
         #              g = combine(u, h, u_hat, h_hat)
         # --------op1--------------
-        g = self.attention.calculate(h, u, self.context_mask_placeholder, self.question_mask_placeholder) # concat[h, u_a, h*u_a, h*h_a]
+        g = self.attention.calculate(h, u, self.context_mask_placeholder, self.question_mask_placeholder, JX = self.JX, JQ = self.JQ) # concat[h, u_a, h*u_a, h*h_a]
         d_com = d_en*4
-
-        assert g.get_shape().as_list() == [None, JX, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
+        assert g.get_shape().as_list() == [None, None, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
 
         # Step 3:
         # 2 LSTM layers
         # logistic regressions
-        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder, dropout = self.dropout_placeholder)
-        assert pred1.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred1.get_shape().as_list())
-        assert pred2.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], pred2.get_shape().as_list())
+        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder, dropout = self.dropout_placeholder, JX = self.JX)
         return pred1, pred2
 
-
     def setup_loss(self, preds):
-        """
-        Set up your loss computation here
-        Args:
-            preds: A tensor of shape (batch_size, 2, n_classes) containing the output of the neural
-                  network before the softmax layer.
-        :return:
-        """
-        JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         with vs.variable_scope("loss"):
-            s, e = preds
-            assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
-            assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
-            assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
+            s, e = preds # [None, JX]*2
+            assert s.get_shape().ndims == 2
+            assert e.get_shape().ndims == 2
             loss1 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
             loss2 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=e, labels=self.answer_end_placeholders),)
             # loss1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
@@ -434,33 +366,58 @@ class QASystem(object):
         return loss
 
     def setup_embeddings(self):
-        """
-        Loads distributed word representations based on placeholder tokens
-        :return:
-        """
         with vs.variable_scope("embeddings"):
             if self.config.RE_TRAIN_EMBED:
                 pretrained_embeddings = tf.Variable(self.pretrained_embeddings, name="Emb", dtype=tf.float32)
             else:
                 pretrained_embeddings = tf.cast(self.pretrained_embeddings, tf.float32)
+
             question_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.question_placeholder)
-            question_embeddings = tf.reshape(question_embeddings, shape=[-1, self.config.question_maxlen, self.config.embedding_size * self.config.n_features])
+            question_embeddings = tf.reshape(question_embeddings, shape = [-1, self.JQ, self.config.embedding_size])
+
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
-            context_embeddings = tf.reshape(context_embeddings, shape=[-1, self.config.context_maxlen, self.config.embedding_size * self.config.n_features])
+            context_embeddings = tf.reshape(context_embeddings, shape = [-1, self.JX, self.config.embedding_size])
 
         return question_embeddings, context_embeddings
 
-    def create_feed_dict(self, question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None, is_train = True):
+    def create_feed_dict(self, question_batch, question_len_batch, context_batch, context_len_batch, JX=10, JQ=10, answer_batch=None, is_train = True):
         feed_dict = {}
-        feed_dict[self.question_placeholder] = question_batch
-        feed_dict[self.question_mask_placeholder] = question_mask_batch
-        feed_dict[self.context_placeholder] = context_batch
-        feed_dict[self.context_mask_placeholder] = context_mask_batch
+        JQ = np.max(question_len_batch)
+        JX = np.max(context_len_batch)
+        # print('This batch len: JX = %d, JQ = %d', JX, JQ)
+        def add_paddings(sentence, max_length):
+            mask = [True] * len(sentence)
+            pad_len = max_length - len(sentence)
+            if pad_len > 0:
+                padded_sentence = sentence + [0] * pad_len
+                mask += [False] * pad_len
+            else:
+                padded_sentence = sentence[:max_length]
+                mask = mask[:max_length]
+            return padded_sentence, mask
+
+        def padding_batch(data, max_len):
+            padded_data = []
+            padded_mask = []
+            for sentence in data:
+                d, m = add_paddings(sentence, max_len)
+                padded_data.append(d)
+                padded_mask.append(m)
+            return (padded_data, padded_mask)
+
+        question, question_mask = padding_batch(question_batch, JQ)
+        context, context_mask = padding_batch(context_batch, JX)
+
+        feed_dict[self.question_placeholder] = question
+        feed_dict[self.question_mask_placeholder] = question_mask
+        feed_dict[self.context_placeholder] = context
+        feed_dict[self.context_mask_placeholder] = context_mask
+        feed_dict[self.JQ] = JQ
+        feed_dict[self.JX] = JX
+
         if answer_batch is not None:
             start = answer_batch[:,0]
             end = answer_batch[:,1]
-            # start_one_hot = np.array([one_hot(self.config.context_maxlen, s) for s in start])
-            # end_one_hot = np.array([one_hot(self.config.context_maxlen, e) for e in end])
             feed_dict[self.answer_start_placeholders] = start
             feed_dict[self.answer_end_placeholders] = end
         if is_train:
@@ -476,8 +433,8 @@ class QASystem(object):
         This method is equivalent to a step() function
         :return:
         """
-        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = training_set
-        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch, is_train = True)
+        question_batch, question_len_batch, context_batch, context_len_batch, answer_batch = training_set
+        input_feed = self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=answer_batch, is_train = True)
 
         output_feed = [self.train_op, self.merged, self.loss]
 
@@ -490,37 +447,32 @@ class QASystem(object):
         and tune your hyperparameters according to the validation set performance
         :return:
         """
-        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = validation_set
-        input_feed = self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=answer_batch, is_train = False)
+        question_batch, question_len_batch, context_batch, context_len_batch, answer_batch = validation_set
+        input_feed = self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=answer_batch, is_train = False)
 
         output_feed = [self.loss]
         outputs = session.run(output_feed, input_feed)
         return outputs
 
-    def decode(self, session, test_batch):
+    def answer(self, session, test_batch):
         """
         Returns the probability distribution over different positions in the paragraph
         so that other methods like self.answer() will be able to work properly
         :return:
         """
-        question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch = test_batch
-        input_feed =  self.create_feed_dict(question_batch, question_mask_batch, context_batch, context_mask_batch, answer_batch=None, is_train = False)
 
         # fill in this feed_dictionary like:
         # input_feed['test_x'] = test_x
 
+        question_batch, question_len_batch, context_batch, context_len_batch, answer_batch = test_batch
+        input_feed =  self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=None, is_train = False)
         output_feed = [self.preds[0], self.preds[1]]
-
         outputs = session.run(output_feed, input_feed)
 
-        return outputs
-
-    def answer(self, session, test_sample):
-        s, e = self.decode(session, test_sample)
+        s, e = outputs
 
         a_s = np.argmax(s, axis=1)
         a_e = np.argmax(e, axis=1)
-        _, _, _, _, ans = test_sample
         #print((a_s, a_e), ans)
         return (a_s, a_e)
 
@@ -559,21 +511,6 @@ class QASystem(object):
         return avg_loss
 
     def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
-        """
-        Evaluate the model's performance using the harmonic mean of F1 and Exact Match (EM)
-        with the set of true answer labels
-
-        This step actually takes quite some time. So we can only sample 100 examples
-        from either training or testing set.
-
-        :param session: session should always be centrally managed in train.py
-        :param dataset: a representation of our data, in some implementations, you can
-                        pass in multiple components (arguments) of one dataset to this function
-        :param sample: how many examples in dataset we look at
-        :param log: whether we print to std out stream
-        :return:
-        """
-
         f1 = 0.
         em = 0.
 
@@ -604,10 +541,13 @@ class QASystem(object):
         return f1, em
 
     def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=100):
-        batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
+        set_num = len(training_set)
+        batch_size = self.config.batch_size
+        batch_num = int(np.ceil(set_num * 1.0 / batch_size))
+
         prog = Progbar(target=batch_num)
         avg_loss = 0
-        for i, batch in enumerate(minibatches(training_set, self.config.batch_size)):
+        for i, batch in enumerate(minibatches(training_set, self.config.batch_size, window_batch = self.config.window_batch)):
             global_batch_num = batch_num * epoch_num + i
             _, summary, loss = self.optimize(session, batch)
             prog.update(i + 1, [("training loss", loss)])
@@ -624,42 +564,13 @@ class QASystem(object):
 
 
     def train(self, session, dataset, train_dir, vocab):
-        """
-        Implement main training loop
-
-        TIPS:
-        You should also implement learning rate annealing (look into tf.train.exponential_decay)
-        Considering the long time to train, you should save your model per epoch.
-
-        More ambitious appoarch can include implement early stopping, or reload
-        previous models if they have higher performance than the current one
-
-        As suggested in the document, you should evaluate your training progress by
-        printing out information every fixed number of iterations.
-
-        We recommend you evaluate your model performance on F1 and EM instead of just
-        looking at the cost.
-
-        :param session: it should be passed in from train.py
-        :param dataset: a representation of our data, in some implementations, you can
-                        pass in multiple components (arguments) of one dataset to this function
-        :param train_dir: path to the directory where you should save the model checkpoint
-        :return:
-        """
-
-        # some free code to print out number of parameters in your model
-        # it's always good to check!
-        # you will also want to save your model parameters in train_dir
-        # so that you can use your trained model to make predictions, or
-        # even continue training
-
         tic = time.time()
         params = tf.trainable_variables()
         num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
         toc = time.time()
         logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
 
-        training_set = dataset['training']
+        training_set = dataset['training'] # [question, len(question), context, len(context), answer]
         validation_set = dataset['validation']
         sample_size = 100
         f1_best = 0
@@ -670,9 +581,11 @@ class QASystem(object):
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
+
             score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=sample_size)
             logging.info("-- validation --")
             self.validate(session, validation_set)
+
             f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
             # Saving the model
             if f1>f1_best:
