@@ -44,6 +44,8 @@ tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("evaluate_sample_size", 400, "number of samples for evaluation (default: 400)")
+tf.app.flags.DEFINE_string("model_selection_sample_size", 1000, "number of samples for selecting best model (default: 1000)")
 tf.app.flags.DEFINE_integer("window_batch", 3, "window size / batch size")
 
 
