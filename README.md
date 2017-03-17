@@ -1,22 +1,29 @@
 # Programming Assignment 4
-Welcome to CS224N Project Assignment 4 Reading Comprehension.
-The project has several dependencies that have to be satisfied before running the code. You can install them using your preferred method -- we list here the names of the packages using `pip`.
+## How to train
+Remember to change the parameters in `code/train.py`. Run your model by:
+    
+    $ python code/train.py
 
-# Requirements
+## How to submit:
+1. Change the parameters in `code/qa_answer.py`, make sure they're the same as what you used in `code/train.py`. You need to specify `context_maxlen`, `question_maxlen` (Cannot be None).
 
-The starter code provided pressuposes a working installation of Python 2.7, as well as a TensorFlow 0.12.1.
+2. Make sure your model is runnable by running
 
-It should also install all needed dependnecies through
-`pip install -r requirements.txt`.
+    $ python code/qa_answer.py
 
-# Running your assignment
+3. Run the submission script by the following command. You'll need to log in to codalab. This script will block until the job is complete.
 
-You can get started by downloading the datasets and doing dome basic preprocessing:
+    $ ./codalab_run-predict.sh
 
-$ code/get_started.sh
+4. To submit sanity-check, run the following command. Visit [Codalab](https://worksheets.codalab.org/) to see results.
 
-Note that you will always want to run your code from this assignment directory, not the code directory, like so:
+    $ cl edit run-predict -T cs224n-win17-submit-sanity-check
 
-$ python code/train.py
+5. To submit dev 
 
-This ensures that any files created in the process don't pollute the code directoy.
+    $ cl edit run-predict -T cs224n-win17-submit-dev
+
+6. To submit test
+
+    $ cl edit run-predict -T cs224n-win17-submit-test
+

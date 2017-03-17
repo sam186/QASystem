@@ -8,8 +8,23 @@ logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 class Config(object):
-    def __init__(self, data_dir, small_dir=None, small_val = None):
+    def __init__(self, data_dir, small_dir=None, small_val = None, sorted_data=True):
             # self.val_answer_file = pjoin(data_dir, 'val.answer')
+        if sorted_data:
+            self.train_answer_span_file = pjoin(data_dir, 'train.span_sorted')
+            self.train_question_file = pjoin(data_dir, 'train.ids.question_sorted')
+            self.train_context_file = pjoin(data_dir, 'train.ids.context_sorted')
+        else:
+            if small_dir is None:
+                # self.train_answer_file = pjoin(data_dir, 'train.answer')
+                self.train_answer_span_file = pjoin(data_dir, 'train.span')
+                self.train_question_file = pjoin(data_dir, 'train.ids.question')
+                self.train_context_file = pjoin(data_dir, 'train.ids.context')
+            else:
+                self.train_answer_span_file = pjoin(data_dir, 'train.span_' + str(small_dir))
+                self.train_question_file = pjoin(data_dir, 'train.ids.question_' + str(small_dir))
+                self.train_context_file = pjoin(data_dir, 'train.ids.context_' + str(small_dir))
+
         if small_val is None:
             self.val_answer_span_file = pjoin(data_dir, 'val.span')
             self.val_question_file = pjoin(data_dir, 'val.ids.question')
@@ -18,15 +33,6 @@ class Config(object):
             self.val_answer_span_file = pjoin(data_dir, 'val.span_')+str(small_val)
             self.val_question_file = pjoin(data_dir, 'val.ids.question_')+str(small_val)
             self.val_context_file = pjoin(data_dir, 'val.ids.context_')+str(small_val)
-        if small_dir is None:
-            # self.train_answer_file = pjoin(data_dir, 'train.answer')
-            self.train_answer_span_file = pjoin(data_dir, 'train.span')
-            self.train_question_file = pjoin(data_dir, 'train.ids.question')
-            self.train_context_file = pjoin(data_dir, 'train.ids.context')
-        else:
-            self.train_answer_span_file = pjoin(data_dir, 'train.span_' + str(small_dir))
-            self.train_question_file = pjoin(data_dir, 'train.ids.question_' + str(small_dir))
-            self.train_context_file = pjoin(data_dir, 'train.ids.context_' + str(small_dir))
 
 def load_glove_embeddings(embed_path):
     logger.info("Loading glove embedding...")
@@ -36,32 +42,23 @@ def load_glove_embeddings(embed_path):
     return glove
 
 def add_paddings(sentence, max_length, n_features=1):
-    zero_vector = [0] * n_features
-    mask = [[True]] * len(sentence)
+    mask = [True] * len(sentence)
     pad_len = max_length - len(sentence)
     if pad_len > 0:
-        padded_sentence = sentence + [zero_vector] * pad_len
-        mask += [[False]] * pad_len
+        padded_sentence = sentence + [0] * pad_len
+        mask += [False] * pad_len
     else:
         padded_sentence = sentence[:max_length]
         mask = mask[:max_length]
     return padded_sentence, mask
 
-def featurize_paragraph(paragraph, paragraph_length):
-    # TODO: Split by sentence instead of word
-    sentences = [[word] for word in paragraph]
-    return sentences
-
 def preprocess_dataset(dataset, question_maxlen, context_maxlen):
     processed = []
     for q, q_len, c, c_len, ans in dataset:
-        q_sentences = featurize_paragraph(q, q_len)
-        c_sentences = featurize_paragraph(c, c_len)
-
         # add padding:
-        q_sentences, q_mask = add_paddings(q_sentences, question_maxlen)
-        c_sentences, c_mask = add_paddings(c_sentences, context_maxlen)
-        processed.append([q_sentences, q_mask, c_sentences, c_mask, ans])
+        q_padded, q_mask = add_paddings(q, question_maxlen)
+        c_padded, c_mask = add_paddings(c, context_maxlen)
+        processed.append([q_padded, q_mask, c_padded, c_mask, ans])
     return processed
 
 def strip(x):
@@ -74,7 +71,7 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
     max_q_len = 0
     max_c_len = 0
     max_ans_end = 0
-    logger.info("Loading training data...")
+    logger.info("Loading training data from %s ...", config.train_question_file)
     with gfile.GFile(config.train_question_file, mode="rb") as q_file, \
          gfile.GFile(config.train_context_file, mode="rb") as c_file, \
          gfile.GFile(config.train_answer_span_file, mode="rb") as a_file:
@@ -93,8 +90,14 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 if debug_train_samples is not None and len(train) == debug_train_samples:
                     break
     logger.info("Finish loading %d train data." % len(train))
+    logger.info("Max question length %d" % max_q_len)
+    logger.info("Max context length %d" % max_c_len)
+    logger.info("Max answer end %d" % max_ans_end)
 
     val = []
+    max_q_len_v = 0
+    max_c_len_v = 0
+    max_ans_end_v = 0
     logger.info("Loading validation data...")
     with gfile.GFile(config.val_question_file, mode="rb") as q_file, \
          gfile.GFile(config.val_context_file, mode="rb") as c_file, \
@@ -103,28 +106,29 @@ def read_data(data_dir, small_dir=None, small_val = None, question_maxlen=None, 
                 question = strip(q)
                 context = strip(c)
                 answer = strip(a)
-                max_ans_end = max(max_ans_end, answer[1])
+                max_ans_end_v = max(max_ans_end_v, answer[1])
                 # ignore examples that have answers outside context_maxlen
                 if context_maxlen is not None and answer[1] >= context_maxlen:
                     continue
                 sample = [question, len(question), context, len(context), answer]
                 val.append(sample)
-                max_q_len = max(max_q_len, len(question))
-                max_c_len = max(max_c_len, len(context))
+                max_q_len_v = max(max_q_len_v, len(question))
+                max_c_len_v = max(max_c_len_v, len(context))
                 if debug_val_samples is not None and len(val) == debug_val_samples:
                     break
     logger.info("Finish loading %d validation data." % len(val))
-    logger.info("Max question length %d" % max_q_len)
-    logger.info("Max context length %d" % max_c_len)
-    logger.info("Max answer end %d" % max_ans_end)
+    logger.info("Max question length %d" % max_q_len_v)
+    logger.info("Max context length %d" % max_c_len_v)
+    logger.info("Max answer end %d" % max_ans_end_v)
 
     if question_maxlen is None:
-        question_maxlen = max_q_len
+        question_maxlen = max(max_q_len_v, max_q_len)
     if context_maxlen is None:
-        context_maxlen = max_c_len
+        context_maxlen = max(max_c_len_v, max_c_len)
 
-    train = preprocess_dataset(train, question_maxlen, context_maxlen)
-    val = preprocess_dataset(val, question_maxlen, context_maxlen)
+    # train = preprocess_dataset(train, question_maxlen, context_maxlen)
+    # val = preprocess_dataset(val, question_maxlen, context_maxlen)
+    # print(train)
 
     return {"training": train, "validation": val, "question_maxlen": max_q_len, "context_maxlen": max_c_len}
 
