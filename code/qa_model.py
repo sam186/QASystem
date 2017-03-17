@@ -28,6 +28,7 @@ def variable_summaries(var):
     tf.summary.scalar('min', tf.reduce_min(var))
     tf.summary.histogram('histogram', var)
 
+# No gradient clipping:
 def get_optimizer(opt):
     if opt == "adam":
         optfn = tf.train.AdamOptimizer
@@ -37,6 +38,7 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
+# With gradient clipping:
 def get_optimizer(opt, loss, max_grad_norm, learning_rate):
     if opt == "adam":
         optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -121,14 +123,6 @@ class Attention(object):
         h_0_u_a = h*u_a #[None, JX, d_en]
         h_0_h_a = h*h_a #[None, JX, d_en]
         return tf.concat(2,[h, u_a, h_0_u_a, h_0_h_a])
-
-# def flatten(tensor, keep):
-#     fixed_shape = tensor.get_shape().as_list()
-#     start = len(fixed_shape) - keep
-#     left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
-#     out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
-#     flat = tf.reshape(tensor, out_shape)
-#     return flat
 
 class Encoder(object):
     def __init__(self, vocab_dim, state_size, dropout = 0):
@@ -322,11 +316,11 @@ class QASystem(object):
             self.loss = self.setup_loss(self.preds)
 
         # ==== set up training/updating procedure ====
+        # No gradient clipping:
         # get_op = get_optimizer(self.config.optimizer)
         # self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
 
-        # global_step = tf.Variable(0, trainable=False)
-        # learning_rate = tf.train.exponential_decay(self.config.learning_rate, global_step, 100000, 0.96, staircase=True)
+        # With gradient clipping:
         opt_op = get_optimizer("adam", self.loss, config.max_gradient_norm, config.learning_rate)
 
         if config.ema_weight_decay is not None:
@@ -341,7 +335,6 @@ class QASystem(object):
         with tf.control_dependencies([opt_op]):
             train_op = tf.group(ema_op)
         return train_op
-
 
     def setup_system(self, x, q):
         d = x.get_shape().as_list()[-1] # self.config.embedding_size
