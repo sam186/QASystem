@@ -421,7 +421,7 @@ class QASystem(object):
             feed_dict[self.answer_start_placeholders] = start
             feed_dict[self.answer_end_placeholders] = end
         if is_train:
-            feed_dict[self.dropout_placeholder] = 0.85
+            feed_dict[self.dropout_placeholder] = 0.8
         else:
             feed_dict[self.dropout_placeholder] = 1.0
 
@@ -510,7 +510,7 @@ class QASystem(object):
         logging.info("Average validation loss: {}".format(avg_loss))
         return avg_loss
 
-    def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
+    def evaluate_answer(self, session, dataset, vocab, sample=500, log=False):
         f1 = 0.
         em = 0.
 
@@ -540,10 +540,11 @@ class QASystem(object):
 
         return f1, em
 
-    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=100):
+    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=400):
         set_num = len(training_set)
         batch_size = self.config.batch_size
         batch_num = int(np.ceil(set_num * 1.0 / batch_size))
+        sample_size = 400
 
         prog = Progbar(target=batch_num)
         avg_loss = 0
@@ -572,7 +573,7 @@ class QASystem(object):
 
         training_set = dataset['training'] # [question, len(question), context, len(context), answer]
         validation_set = dataset['validation']
-        sample_size = 100
+        sample_size = 400
         f1_best = 0
         if self.config.debug_train_samples !=None:
             sample_size = min([sample_size, self.config.debug_train_samples])
