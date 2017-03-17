@@ -28,6 +28,7 @@ def variable_summaries(var):
     tf.summary.scalar('min', tf.reduce_min(var))
     tf.summary.histogram('histogram', var)
 
+# No gradient clipping:
 def get_optimizer(opt):
     if opt == "adam":
         optfn = tf.train.AdamOptimizer
@@ -36,6 +37,25 @@ def get_optimizer(opt):
     else:
         assert (False)
     return optfn
+
+# With gradient clipping:
+def get_optimizer(opt, loss, max_grad_norm, learning_rate):
+    if opt == "adam":
+        optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    elif opt == "sgd":
+        optfn = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    else:
+        assert (False)
+
+    grads_and_vars = optfn.compute_gradients(loss)
+    variables = [output[1] for output in grads_and_vars]
+    gradients = [output[0] for output in grads_and_vars]
+
+    gradients = tf.clip_by_global_norm(gradients, clip_norm=max_grad_norm)[0]
+    grads_and_vars = [(gradients[i], variables[i]) for i in range(len(gradients))]
+    train_op = optfn.apply_gradients(grads_and_vars)
+
+    return train_op
 
 def softmax_mask_prepro(tensor, mask): # set huge neg number(-1e10) in padding area
     assert tensor.get_shape().ndims == mask.get_shape().ndims
@@ -77,6 +97,7 @@ class Attention(object):
         u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
         s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
+
         s = softmax_mask_prepro(s, hu_mask_aug)
 
         # get a_x
@@ -102,14 +123,6 @@ class Attention(object):
         h_0_u_a = h*u_a #[None, JX, d_en]
         h_0_h_a = h*h_a #[None, JX, d_en]
         return tf.concat(2,[h, u_a, h_0_u_a, h_0_h_a])
-
-# def flatten(tensor, keep):
-#     fixed_shape = tensor.get_shape().as_list()
-#     start = len(fixed_shape) - keep
-#     left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
-#     out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
-#     flat = tf.reshape(tensor, out_shape)
-#     return flat
 
 class Encoder(object):
     def __init__(self, vocab_dim, state_size, dropout = 0):
@@ -303,9 +316,25 @@ class QASystem(object):
             self.loss = self.setup_loss(self.preds)
 
         # ==== set up training/updating procedure ====
-        get_op = get_optimizer(self.config.optimizer)
-        self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
+        # No gradient clipping:
+        # get_op = get_optimizer(self.config.optimizer)
+        # self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
+
+        # With gradient clipping:
+        opt_op = get_optimizer("adam", self.loss, config.max_gradient_norm, config.learning_rate)
+
+        if config.ema_weight_decay is not None:
+            self.train_op = self.build_ema(opt_op)
+        else:
+            self.train_op = opt_op
         self.merged = tf.summary.merge_all()
+
+    def build_ema(self, opt_op):
+        self.ema = tf.train.ExponentialMovingAverage(self.config.ema_weight_decay)
+        ema_op = self.ema.apply(tf.trainable_variables())
+        with tf.control_dependencies([opt_op]):
+            train_op = tf.group(ema_op)
+        return train_op
 
     def setup_system(self, x, q):
         d = x.get_shape().as_list()[-1] # self.config.embedding_size
@@ -473,7 +502,6 @@ class QASystem(object):
 
         a_s = np.argmax(s, axis=1)
         a_e = np.argmax(e, axis=1)
-        #print((a_s, a_e), ans)
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):

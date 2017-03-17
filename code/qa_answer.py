@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO)
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_float("learning_rate", 0.005, "Learning rate.")
+tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
 tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 0, "Number of epochs to train.")
@@ -50,6 +51,7 @@ tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (
 tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd")
 tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden_size.")
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
+tf.app.flags.DEFINE_string("ema_weight_decay", 0.9999, "exponential decay for moving averages ")
 
 def initialize_model(session, model, train_dir):
     ckpt = tf.train.get_checkpoint_state(train_dir)
