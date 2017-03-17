@@ -58,12 +58,23 @@ def get_new_optimizer(opt, loss, max_grad_norm, learning_rate):
 
     return train_op
 
-def softmax_mask_prepro(tensor, mask): # set huge neg number(-1e10) in padding area
-    assert tensor.get_shape().as_list() == mask.get_shape().as_list()
+def softmax_mask_prepro(tensor, mask, direction=None): # set huge neg number(-1e10) in padding area or start area
+    if tensor.get_shape().ndims == mask.get_shape().ndims+1 and (direction is not None):
+        # tensor: [N, JX],        mask(start_index): [N]
+        JX = tensor.get_shape().as_list()[-1]
+        tmp_mask = tf.tile(tf.expand_dims(mask, axis = -1), [1, JX]) #->[N, JX]
+        idx = tf.expand_dims(tf.range(JX), axis = 0) #[1, JX]
+        if direction=='l':
+            mask_org = mask
+            mask = (tmp_mask<=idx)
+
+    assert tensor.get_shape().as_list() == mask.get_shape().as_list(), "got {}".format(mask.get_shape().as_list())
 
     m0 = tf.subtract(tf.constant(1.0), tf.cast(mask, 'float32'))
     paddings = tf.multiply(m0,tf.constant(-1e10))
     tensor = tf.select(mask, tensor, paddings)
+    if direction=='l':
+        tensor = tf.Print(tensor, [mask_org, tensor], summarize = 200)
     return tensor
 
 class Attention(object):
@@ -82,7 +93,6 @@ class Attention(object):
         :param u: [N, JQ, d_en]
         :param h_mask:  [N, JX]
         :param u_mask:  [N, JQ]
-        :param scope:
 
         :return: [N, JX, d_com]
         """
@@ -201,7 +211,6 @@ class Encoder(object):
 class Decoder(object):
     def __init__(self, output_size, hidden_size, state_size):
         self.output_size = output_size
-        self.hidden_size = hidden_size
         self.state_size = state_size
 
     def decode(self, g, context_mask):
@@ -211,25 +220,26 @@ class Decoder(object):
         all paragraph tokens on which token should be
         the start of the answer span, and which should be
         the end of the answer span.
-
-        :param knowledge_rep: it is a representation of the paragraph and question,
-                              decided by how you choose to implement the encoder
-        :return:
+        m_2 = bi_LSTM*2(g)
         """
         d_de = self.state_size*2
-        #  m_2 = bi_LSTM*2(g)
         with tf.variable_scope('g'):
             m, m_repr, m_state = \
                  self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None)
         with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
                  self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state)
-        # assert m_2.get_shape().as_list() == [None, JX, d_en2], "Expected {}, got {}".format([None, JX, d_de], m.get_shape().as_list())
+        # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
-        # pred1, pred2 = self.decoder.logistic_regression_concat(m)
-       # pred1, pred2 = self.logistic_regression_se_hid(m_2)
-        pred1, pred2 = self.get_logit(m_2)
-        return (pred1, pred2)
+        s, e = self.get_logit(m_2) #[N, JX]*2
+        # s, e = self.get_logit_start_end(m_2) #[N, JX]*2
+        s = softmax_mask_prepro(s, context_mask)
+        e = softmax_mask_prepro(e, context_mask)
+
+        # arg_s = tf.cast(tf.argmax(s, axis=1), 'int32') #[N]
+        # e = softmax_mask_prepro(e, arg_s, direction = 'l')
+        # e = tf.Print(e, [e], summarize = 100)
+        return (s, e)
 
     def decode_LSTM(self, inputs, mask, encoder_state_input):
         logging.debug('-'*5 + 'decode_LSTM' + '-'*5)
@@ -276,112 +286,38 @@ class Decoder(object):
         pred2 = tf.reshape(pred2, shape = [-1, JX])
         return pred1, pred2
 
-
-    def logistic_regression_concat(self, X):
-        """
-        With any kind of representation, do 2 independent classifications
-        Args:
-            X: [N, JX, d_en2]
-        Returns:
-            pred: [N, 2, JX]
-        """
+    def get_logit_start_end(self, X):
         JX = X.get_shape().as_list()[-2]
         d = X.get_shape().as_list()[-1]
         assert X.get_shape().as_list() == [None, JX, d]
+        X = tf.reshape(X, shape = [-1, d])
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        pred1 = tf.matmul(X, W1)
+        pred2_0 = tf.matmul(X, W2)
+        pred1 = tf.reshape(pred1, shape = [-1, JX])
+        pred2_0 = tf.reshape(pred2_0, shape = [-1, JX])
 
-        X = tf.reshape(X, shape = [-1, JX*d])
+        pred2_1 = tf.concat(1,[pred1, pred2_0])
+        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
+        b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        pred2 = tf.matmul(pred2_1, W_se)+b_se
 
-        xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        tf.summary.histogram('W1', W1)
-        tf.summary.histogram('W2', W2)
-        tf.summary.histogram('b1', b1)
-        tf.summary.histogram('b2', b2)
-        pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
-        pred2 = tf.matmul(X, W2)+b2 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
-
-        tf.summary.histogram('logit_start', pred1)
-        tf.summary.histogram('logit_end', pred2)
-        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
-        # assert preds.get_shape().as_list() == [None, 2, JX]
         return pred1, pred2
 
     def logistic_regression_start_end(self, X):
-        """
-        With any kind of representation, do 2 independent classifications
-        Args:
-            X: [N, JX, d_en2]
-        Returns:
-            pred: [N, JX]*2
-        """
         JX = X.get_shape().as_list()[-2]
         d = X.get_shape().as_list()[-1]
         assert X.get_shape().as_list() == [None, JX, d]
 
         X = tf.reshape(X, shape = [-1, JX*d])
 
-        xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, JX), dtype=tf.float32)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
+        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
+        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
         W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
         b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        tf.summary.histogram('W1', W1)
-        tf.summary.histogram('W2', W2)
-        tf.summary.histogram('b1', b1)
-        tf.summary.histogram('b2', b2)
-        pred1 = tf.matmul(X, W1)+b1 # [N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
-        h0 = tf.matmul(X, W2)+b2 #[ N, JX*d]*[JX*d, JX] +[JX,] -> [N, JX]
-        h = tf.concat(1,[h0, pred1]) # (concat) [h0, pred1] -> h:[N, 2*JX]
-        assert h.get_shape().as_list() == [None, 2*JX], "Expected {}, got {}".format([None, 2*JX], h.get_shape().as_list())
-        pred2 = tf.matmul(h, W_se)+b_se # [N, 2*JX]*[2*JX, JX]+[JX,] -> [N, JX]
-
-        tf.summary.histogram('logit_start', pred1)
-        tf.summary.histogram('logit_end', pred2)
-        # preds =  tf.stack([pred1, pred2], axis = -2) # -> [N, 2, JX]
-        # assert preds.get_shape().as_list() == [None, 2, JX]
-        return pred1, pred2
-
-    def logistic_regression_se_hid(self, X):
-        """
-        With any kind of representation, do 2 independent classifications
-        Args:
-            X: [N, JX, d_en2]
-        Returns:
-            pred: [N, JX]*2
-        """
-        JX = X.get_shape().as_list()[-2]
-        d = X.get_shape().as_list()[-1]
-        H_size = self.hidden_size
-        assert X.get_shape().as_list() == [None, JX, d]
-
-        X = tf.reshape(X, shape = [-1, JX*d])
-
-        xavier_initializer = tf.contrib.layers.xavier_initializer
-        W1_h = tf.get_variable('W1_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, H_size), dtype=tf.float32)
-        b1_h = tf.get_variable('b1_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size,), dtype=tf.float32)
-        W2_h = tf.get_variable('W2_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX*d, H_size), dtype=tf.float32)
-        b2_h = tf.get_variable('b2_h', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size,), dtype=tf.float32)
-        W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size, JX), dtype=tf.float32)
-        b1 = tf.get_variable('b1', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(H_size, JX), dtype=tf.float32)
-        b2 = tf.get_variable('b2', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        pred1_h = tf.matmul(X, W1_h)+b1_h # [N, JX*d]*[JX*d, H_size] +[H_size,] -> [N, H_size]
-        pred1 = tf.matmul(pred1_h, W1)+b1 # [N, H_size]*[H_size, JX] +[JX,] -> [N, JX]
-        h0_h = tf.matmul(X, W2_h)+b2_h #[ N, JX*d]*[JX*d, H_size] +[H_size,] -> [N, H_size]
-        h0 = tf.matmul(h0_h, W2)+b2 #[ N, H_size]*[H_size, JX] +[JX,] -> [N, JX]
-
-
-        W_se = tf.get_variable('W_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(2*JX, JX), dtype=tf.float32)
-        b_se = tf.get_variable('b_se', initializer=tf.contrib.layers.xavier_initializer(), shape=(JX,), dtype=tf.float32)
-        tf.summary.histogram('W1', W1)
-        tf.summary.histogram('W2', W2)
-        tf.summary.histogram('b1', b1)
-        tf.summary.histogram('b2', b2)
+        pred1 = tf.matmul(X, W1) # [N, JX, d]*[d, 1]  -> [N, JX]
+        h0 = tf.matmul(X, W2) #[ N, JX, d]*[d, 1]  -> [N, JX]
         h = tf.concat(1,[h0, pred1]) # (concat) [h0, pred1] -> h:[N, 2*JX]
         assert h.get_shape().as_list() == [None, 2*JX], "Expected {}, got {}".format([None, 2*JX], h.get_shape().as_list())
         pred2 = tf.matmul(h, W_se)+b_se # [N, 2*JX]*[2*JX, JX]+[JX,] -> [N, JX]
@@ -436,8 +372,6 @@ class QASystem(object):
         After your modularized implementation of encoder and decoder
         you should call various functions inside encoder, decoder here
         to assemble your reading comprehension system!
-
-        :return:
         """
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         d = x.get_shape().as_list()[-1] # self.config.embedding_size * self.config.n_features
@@ -501,13 +435,7 @@ class QASystem(object):
         JX, JQ = self.config.context_maxlen, self.config.question_maxlen
         with vs.variable_scope("loss"):
             s, e = preds
-            mask = self.context_mask_placeholder
             assert s.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], s.get_shape().as_list())
-            assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
-
-
-            s = softmax_mask_prepro(s, mask)
-            e = softmax_mask_prepro(e, mask)
             assert e.get_shape().as_list() == [None, JX], "Expected {}, got {}".format([None, JX], e.get_shape().as_list())
             assert self.answer_end_placeholders.get_shape().as_list() == [None, ], "Expected {}, got {}".format([None, JX], self.answer_end_placeholders.get_shape().as_list())
             loss1 = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=s, labels=self.answer_start_placeholders),)
@@ -597,13 +525,11 @@ class QASystem(object):
 
     def answer(self, session, test_sample):
         s, e = self.decode(session, test_sample)
-        _, _, _, mask, _ = test_sample
-        s[np.invert(mask)]=-1e10
-        e[np.invert(mask)]=-1e10
+       
         a_s = np.argmax(s, axis=1)
         a_e = np.argmax(e, axis=1)
-        # _, _, _, _, ans = test_sample
-        # print((a_s, a_e), ans)
+        _, _, _, _, ans = test_sample
+        print((a_s, a_e), ans)
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
@@ -685,7 +611,7 @@ class QASystem(object):
 
         return f1, em
 
-    def run_epoch(self, session, epoch_num, training_set, vocab, sample_size=100, validation_set):
+    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=100):
         batch_num = int(np.ceil(len(training_set) * 1.0 / self.config.batch_size))
         prog = Progbar(target=batch_num)
         avg_loss = 0
@@ -752,7 +678,7 @@ class QASystem(object):
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
-            score = self.run_epoch(session, epoch, training_set, vocab, sample_size=sample_size, validation_set)
+            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=sample_size)
             logging.info("-- validation --")
             self.validate(session, validation_set)
             f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
