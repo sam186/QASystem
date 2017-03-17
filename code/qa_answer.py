@@ -29,7 +29,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_float("learning_rate", 0.005, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 10, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 0, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
@@ -139,7 +139,6 @@ def preprocessing(context_data, question_data, context_maxlen, question_maxlen):
         dataset.append(sample)
         max_q_len = max(max_q_len, len(question))
         max_c_len = max(max_c_len, len(context))
-    dataset = preprocess_dataset(dataset, question_maxlen, context_maxlen)
     logging.debug("Max question length %d" % max_q_len)
     logging.debug("Max context length %d" % max_c_len)
     return dataset
@@ -229,10 +228,10 @@ def main(_):
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
-    encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
-    decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
+    #encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
+    #decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
 
-    qa = QASystem(encoder, decoder, embeddings, FLAGS)
+    qa = QASystem(embeddings, FLAGS)
 
     with tf.Session() as sess:
         train_dir = get_normalized_train_dir(FLAGS.train_dir)
