@@ -510,7 +510,7 @@ class QASystem(object):
         logging.info("Average validation loss: {}".format(avg_loss))
         return avg_loss
 
-    def evaluate_answer(self, session, dataset, vocab, sample=500, log=False):
+    def evaluate_answer(self, session, dataset, vocab, sample=400, log=False):
         f1 = 0.
         em = 0.
 
@@ -540,7 +540,7 @@ class QASystem(object):
 
         return f1, em
 
-    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=500):
+    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=400):
         set_num = len(training_set)
         batch_size = self.config.batch_size
         batch_num = int(np.ceil(set_num * 1.0 / batch_size))
@@ -580,11 +580,11 @@ class QASystem(object):
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
 
-            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=500)
+            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=self.config.evaluate_sample_size)
             logging.info("-- validation --")
             self.validate(session, validation_set)
 
-            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=1000, log=True)
+            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=self.config.model_selection_sample_size, log=True)
             # Saving the model
             if f1>f1_best:
                 f1_best = f1
