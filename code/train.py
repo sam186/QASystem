@@ -44,10 +44,10 @@ tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("ema_weight_decay", 0.9999, "exponential decay for moving averages ")
 tf.app.flags.DEFINE_string("evaluate_sample_size", 400, "number of samples for evaluation (default: 400)")
 tf.app.flags.DEFINE_string("model_selection_sample_size", 1000, "number of samples for selecting best model (default: 1000)")
 tf.app.flags.DEFINE_integer("window_batch", 3, "window size / batch size")
-
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -84,7 +84,7 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train-fei'
+    global_train_dir = '/tmp/cs224n-squad-train'
     if os.path.exists(global_train_dir):
         os.unlink(global_train_dir)
     if not os.path.exists(train_dir):
@@ -97,10 +97,10 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
+
     #dataset = read_data(FLAGS.data_dir, small_dir=None, small_val=None, \
     #    debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
     dataset = read_data(FLAGS.data_dir)
-
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
