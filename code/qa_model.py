@@ -112,16 +112,35 @@ class Attention(object):
 #     return flat
 
 class Encoder(object):
-    def __init__(self, vocab_dim, state_size):
+    def __init__(self, vocab_dim, state_size, dropout = 0):
         self.vocab_dim = vocab_dim
         self.state_size = state_size
+        #self.dropout = dropout
+        #logging.info("Dropout rate for encoder: {}".format(self.dropout))
 
-    def encode(self, inputs, mask, encoder_state_input):
+    def encode(self, inputs, mask, encoder_state_input, dropout = 1.0):
+        """
+        In a generalized encode function, you pass in your inputs,
+        sequence_length, and an initial hidden state input into this function.
+
+        :param inputs: Symbolic representations of your input (padded all to the same length)
+        :param mask: mask of the sequence
+        :param encoder_state_input: (Optional) pass this as initial hidden state
+                                    to tf.nn.dynamic_rnn to build conditional representations
+        :return: an encoded representation of your input.
+                 It can be context-level representation, word-level representation,
+                 or both.
+        """
+
         logging.debug('-'*5 + 'encode' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
         # Backward direction cell
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
+
+
+        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
+        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -157,15 +176,23 @@ class Decoder(object):
         self.output_size = output_size
         self.state_size = state_size
 
-    def decode(self, g, context_mask, JX):
+    def decode(self, g, context_mask, JX, dropout = 1.0):
+        """
+        takes in a knowledge representation
+        and output a probability estimation over
+        all paragraph tokens on which token should be
+        the start of the answer span, and which should be
+        the end of the answer span.
+        m_2 = bi_LSTM*2(g)
+        """
         d_de = self.state_size*2
         with tf.variable_scope('g'):
             m, m_repr, m_state = \
-                 self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None)
+                 self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None, dropout = dropout)
         with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
-                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state)
-        # m_2 [None, JX, d_en2]
+                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout)
+        # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
         s, e = self.get_logit(m_2, JX) #[N, JX]*2
         # or s, e = self.get_logit_start_end(m_2) #[N, JX]*2
@@ -173,12 +200,17 @@ class Decoder(object):
         e = softmax_mask_prepro(e, context_mask)
         return (s, e)
 
-    def decode_LSTM(self, inputs, mask, encoder_state_input):
+    def decode_LSTM(self, inputs, mask, encoder_state_input, dropout = 1.0):
         logging.debug('-'*5 + 'decode_LSTM' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
         # Backward direction cell
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
+
+        # add dropout
+
+        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
+        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -259,6 +291,7 @@ class QASystem(object):
         # self.answer_placeholders = tf.placeholder(dtype=tf.int32, name="a", shape=(None, config.answer_size))
         self.answer_start_placeholders = tf.placeholder(dtype=tf.int32, name="a_s", shape=(None,))
         self.answer_end_placeholders = tf.placeholder(dtype=tf.int32, name="a_e", shape=(None,))
+        self.dropout_placeholder = tf.placeholder(dtype=tf.float32, name="dropout", shape=())
         self.JX = tf.placeholder(dtype=tf.int32, name='JX', shape=())
         self.JQ = tf.placeholder(dtype=tf.int32, name='JQ', shape=())
 
@@ -286,15 +319,15 @@ class QASystem(object):
         #         e.g. h = encode_context(x, u_state)   # get H (2d*T) as representation of x
         with tf.variable_scope('q'):
             u, question_repr, u_state = \
-                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None)
+                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None, dropout = self.dropout_placeholder)
             if self.config.QA_ENCODER_SHARE:
                 tf.get_variable_scope().reuse_variables()
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
         if not self.config.QA_ENCODER_SHARE:
             with tf.variable_scope('c'):
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         d_en = self.config.encoder_state_size*2
         assert h.get_shape().as_list() == [None, None, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
@@ -316,7 +349,7 @@ class QASystem(object):
         # Step 3:
         # 2 LSTM layers
         # logistic regressions
-        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder, JX = self.JX)
+        pred1, pred2 = self.decoder.decode(g, self.context_mask_placeholder, dropout = self.dropout_placeholder, JX = self.JX)
         return pred1, pred2
 
     def setup_loss(self, preds):
@@ -344,10 +377,10 @@ class QASystem(object):
 
             context_embeddings = tf.nn.embedding_lookup(pretrained_embeddings, self.context_placeholder)
             context_embeddings = tf.reshape(context_embeddings, shape = [-1, self.JX, self.config.embedding_size])
-        
+
         return question_embeddings, context_embeddings
 
-    def create_feed_dict(self, question_batch, question_len_batch, context_batch, context_len_batch, JX=10, JQ=10, answer_batch=None):
+    def create_feed_dict(self, question_batch, question_len_batch, context_batch, context_len_batch, JX=10, JQ=10, answer_batch=None, is_train = True):
         feed_dict = {}
         JQ = np.max(question_len_batch)
         JX = np.max(context_len_batch)
@@ -387,11 +420,21 @@ class QASystem(object):
             end = answer_batch[:,1]
             feed_dict[self.answer_start_placeholders] = start
             feed_dict[self.answer_end_placeholders] = end
+        if is_train:
+            feed_dict[self.dropout_placeholder] = 0.8
+        else:
+            feed_dict[self.dropout_placeholder] = 1.0
+
         return feed_dict
 
     def optimize(self, session, training_set):
+        """
+        Takes in actual data to optimize your model
+        This method is equivalent to a step() function
+        :return:
+        """
         question_batch, question_len_batch, context_batch, context_len_batch, answer_batch = training_set
-        input_feed = self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=answer_batch)
+        input_feed = self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=answer_batch, is_train = True)
 
         output_feed = [self.train_op, self.merged, self.loss]
 
@@ -405,21 +448,32 @@ class QASystem(object):
         :return:
         """
         question_batch, question_len_batch, context_batch, context_len_batch, answer_batch = validation_set
-        input_feed = self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=answer_batch)
+        input_feed = self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=answer_batch, is_train = False)
 
         output_feed = [self.loss]
         outputs = session.run(output_feed, input_feed)
         return outputs
 
     def answer(self, session, test_batch):
+        """
+        Returns the probability distribution over different positions in the paragraph
+        so that other methods like self.answer() will be able to work properly
+        :return:
+        """
+
+        # fill in this feed_dictionary like:
+        # input_feed['test_x'] = test_x
+
         question_batch, question_len_batch, context_batch, context_len_batch, answer_batch = test_batch
-        input_feed =  self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=None)
+        input_feed =  self.create_feed_dict(question_batch, question_len_batch, context_batch, context_len_batch, answer_batch=None, is_train = False)
         output_feed = [self.preds[0], self.preds[1]]
         outputs = session.run(output_feed, input_feed)
+
         s, e = outputs
-       
+
         a_s = np.argmax(s, axis=1)
         a_e = np.argmax(e, axis=1)
+        #print((a_s, a_e), ans)
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
@@ -456,7 +510,7 @@ class QASystem(object):
         logging.info("Average validation loss: {}".format(avg_loss))
         return avg_loss
 
-    def evaluate_answer(self, session, dataset, vocab, sample=100, log=False):
+    def evaluate_answer(self, session, dataset, vocab, sample=400, log=False):
         f1 = 0.
         em = 0.
 
@@ -486,11 +540,12 @@ class QASystem(object):
 
         return f1, em
 
-    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=100):
+    def run_epoch(self, session, epoch_num, training_set, vocab, validation_set, sample_size=400):
         set_num = len(training_set)
         batch_size = self.config.batch_size
         batch_num = int(np.ceil(set_num * 1.0 / batch_size))
-        
+        sample_size = 400
+
         prog = Progbar(target=batch_num)
         avg_loss = 0
         for i, batch in enumerate(minibatches(training_set, self.config.batch_size, window_batch = self.config.window_batch)):
@@ -518,21 +573,18 @@ class QASystem(object):
 
         training_set = dataset['training'] # [question, len(question), context, len(context), answer]
         validation_set = dataset['validation']
-        sample_size = 100
         f1_best = 0
-        if self.config.debug_train_samples !=None:
-            sample_size = min([sample_size, self.config.debug_train_samples])
         if self.config.tensorboard:
             train_writer_dir = self.config.log_dir + '/train/' # + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
 
-            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=sample_size)
+            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=self.config.evaluate_sample_size)
             logging.info("-- validation --")
             self.validate(session, validation_set)
 
-            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
+            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=self.config.model_selection_sample_size, log=True)
             # Saving the model
             if f1>f1_best:
                 f1_best = f1
