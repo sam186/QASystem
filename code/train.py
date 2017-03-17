@@ -16,9 +16,9 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.003, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.002, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
-tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
+tf.app.flags.DEFINE_float("dropout", 0.20, "Fraction of units randomly dropped on non-recurrent connections.")
 tf.app.flags.DEFINE_integer("batch_size", 40, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 25, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("encoder_state_size", 100, "Size of each encoder model layer.")
@@ -95,9 +95,9 @@ def get_normalized_train_dir(train_dir):
 
 def main(_):
 
-    #dataset = read_data(FLAGS.data_dir, small_dir=None, small_val=None, \
-    #    debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
-    dataset = read_data(FLAGS.data_dir, context_maxlen=FLAGS.context_maxlen)
+    dataset = read_data(FLAGS.data_dir, small_dir=None, small_val=None, \
+        debug_train_samples=FLAGS.debug_train_samples, debug_val_samples=100, context_maxlen=FLAGS.context_maxlen)
+    #dataset = read_data(FLAGS.data_dir, context_maxlen=FLAGS.context_maxlen)
 
     if FLAGS.context_maxlen is None:
         FLAGS.context_maxlen = dataset['context_maxlen']
@@ -112,8 +112,8 @@ def main(_):
     vocab_path = FLAGS.vocab_path or pjoin(FLAGS.data_dir, "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
 
-    encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
-    decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
+    encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size, dropout = FLAGS.dropout)
+    decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size, dropout = FLAGS.dropout)
 
     qa = QASystem(encoder, decoder, embeddings, FLAGS)
 

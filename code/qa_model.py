@@ -121,9 +121,11 @@ def flatten(tensor, keep):
     return flat
 
 class Encoder(object):
-    def __init__(self, vocab_dim, state_size):
+    def __init__(self, vocab_dim, state_size, dropout = 0):
         self.vocab_dim = vocab_dim
         self.state_size = state_size
+        self.dropout = dropout
+        logging.info("Dropout rate for encoder: {}".format(self.dropout))
 
     def encode(self, inputs, mask, encoder_state_input):
         """
@@ -144,6 +146,10 @@ class Encoder(object):
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
         # Backward direction cell
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
+
+
+        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
+        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
 
         initial_state_fw = None
         initial_state_bw = None
@@ -177,10 +183,12 @@ class Encoder(object):
 
 
 class Decoder(object):
-    def __init__(self, output_size, hidden_size, state_size):
+    def __init__(self, output_size, hidden_size, state_size, dropout = 0.):
         self.output_size = output_size
         self.hidden_size = hidden_size
         self.state_size = state_size
+        self.dropout = dropout
+        logging.info("Dropout rate for decoder: {}".format(self.dropout))
 
     def decode(self, g, context_mask):
         """
@@ -215,6 +223,11 @@ class Decoder(object):
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
         # Backward direction cell
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
+
+        # add dropout
+
+        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
+        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = 1-self.dropout, output_keep_prob = 1-self.dropout)
 
         initial_state_fw = None
         initial_state_bw = None
