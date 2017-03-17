@@ -154,7 +154,8 @@ if __name__ == '__main__':
                       [pjoin(args.source_dir, "train.context"),
                        pjoin(args.source_dir, "train.question"),
                        pjoin(args.source_dir, "val.context"),
-                       pjoin(args.source_dir, "val.question")])
+                       pjoin(args.source_dir, "val.question"),
+                       pjoin(args.source_dir, "dev-v1.1.json")])
     vocab, rev_vocab = initialize_vocabulary(pjoin(args.vocab_dir, "vocab.dat"))
 
     # ======== Trim Distributed Word Representation =======
