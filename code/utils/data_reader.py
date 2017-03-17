@@ -8,8 +8,12 @@ logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 class Config(object):
-    def __init__(self, data_dir, small_dir=None, small_val = None):
+    def __init__(self, data_dir, small_dir=None, small_val = None, sorted_data=True):
             # self.val_answer_file = pjoin(data_dir, 'val.answer')
+        if sorted_data:
+            self.train_answer_span_file = pjoin(data_dir, 'train.span_sorted')
+            self.train_question_file = pjoin(data_dir, 'train.ids.question_sorted')
+            self.train_context_file = pjoin(data_dir, 'train.ids.context_sorted')
         if small_val is None:
             self.val_answer_span_file = pjoin(data_dir, 'val.span')
             self.val_question_file = pjoin(data_dir, 'val.ids.question')
