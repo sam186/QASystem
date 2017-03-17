@@ -37,7 +37,7 @@ def get_optimizer(opt):
         assert (False)
     return optfn
 
-def get_new_optimizer(opt, loss, max_grad_norm, learning_rate):
+def get_optimizer(opt, loss, max_grad_norm, learning_rate):
     if opt == "adam":
         optfn = tf.train.AdamOptimizer(learning_rate=learning_rate)
     elif opt == "sgd":
@@ -50,10 +50,7 @@ def get_new_optimizer(opt, loss, max_grad_norm, learning_rate):
     gradients = [output[0] for output in grads_and_vars]
 
     gradients = tf.clip_by_global_norm(gradients, clip_norm=max_grad_norm)[0]
-    #gradients = tmp_gradients
-
     grads_and_vars = [(gradients[i], variables[i]) for i in range(len(gradients))]
-
     train_op = optfn.apply_gradients(grads_and_vars)
 
     return train_op
@@ -362,10 +359,24 @@ class QASystem(object):
         # ==== set up training/updating procedure ====
         # get_op = get_optimizer(self.config.optimizer)
         # self.train_op = get_op(self.config.learning_rate).minimize(self.loss)
-        global_step = tf.Variable(0, trainable=False)
-        learning_rate = tf.train.exponential_decay(self.config.learning_rate, global_step, 100000, 0.96, staircase=True)
-        self.train_op = get_new_optimizer("adam", self.loss, self.config.max_gradient_norm, learning_rate)
+
+        # global_step = tf.Variable(0, trainable=False)
+        # learning_rate = tf.train.exponential_decay(self.config.learning_rate, global_step, 100000, 0.96, staircase=True)
+        opt_op = get_optimizer("adam", self.loss, config.max_gradient_norm, config.learning_rate)
+        if config.ema_weight_decay is not None:
+            self.train_op = self.build_ema(opt_op)
+        else:
+            self.train_op = opt_op
+
         self.merged = tf.summary.merge_all()
+
+
+    def build_ema(self, opt_op):
+        self.ema = tf.train.ExponentialMovingAverage(self.config.ema_weight_decay)
+        ema_op = self.ema.apply(tf.trainable_variables())
+        with tf.control_dependencies([opt_op]):
+            train_op = tf.group(ema_op)
+        return train_op
 
     def setup_system(self, x, q):
         """
