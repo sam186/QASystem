@@ -227,10 +227,10 @@ def main(_):
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
-    encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
-    decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
+    #encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
+    #decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
 
-    qa = QASystem(encoder, decoder, embeddings, FLAGS)
+    qa = QASystem(embeddings, FLAGS)
 
     with tf.Session() as sess:
         train_dir = get_normalized_train_dir(FLAGS.train_dir)
