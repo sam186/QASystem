@@ -510,7 +510,7 @@ class QASystem(object):
         logging.info("Average validation loss: {}".format(avg_loss))
         return avg_loss
 
-    def evaluate_answer(self, session, dataset, vocab, sample=500, log=False):
+    def evaluate_answer(self, session, dataset, vocab, sample=400, log=False):
         f1 = 0.
         em = 0.
 
@@ -573,21 +573,18 @@ class QASystem(object):
 
         training_set = dataset['training'] # [question, len(question), context, len(context), answer]
         validation_set = dataset['validation']
-        sample_size = 400
         f1_best = 0
-        if self.config.debug_train_samples !=None:
-            sample_size = min([sample_size, self.config.debug_train_samples])
         if self.config.tensorboard:
             train_writer_dir = self.config.log_dir + '/train/' # + datetime.datetime.now().strftime('%m-%d_%H-%M-%S')
             self.train_writer = tf.summary.FileWriter(train_writer_dir, session.graph)
         for epoch in range(self.config.epochs):
             logging.info("="* 10 + " Epoch %d out of %d " + "="* 10, epoch + 1, self.config.epochs)
 
-            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=sample_size)
+            score = self.run_epoch(session, epoch, training_set, vocab, validation_set, sample_size=self.config.evaluate_sample_size)
             logging.info("-- validation --")
             self.validate(session, validation_set)
 
-            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=sample_size, log=True)
+            f1, em = self.evaluate_answer(session, validation_set, vocab, sample=self.config.model_selection_sample_size, log=True)
             # Saving the model
             if f1>f1_best:
                 f1_best = f1

@@ -137,7 +137,6 @@ def preprocessing(context_data, question_data, context_maxlen, question_maxlen):
         dataset.append(sample)
         max_q_len = max(max_q_len, len(question))
         max_c_len = max(max_c_len, len(context))
-    dataset = preprocess_dataset(dataset, question_maxlen, context_maxlen)
     logging.debug("Max question length %d" % max_q_len)
     logging.debug("Max context length %d" % max_c_len)
     return dataset
