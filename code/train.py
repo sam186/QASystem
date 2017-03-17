@@ -43,7 +43,7 @@ tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden
 tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
-tf.app.flags.DEFINE_string("debug_train_samples", 100, "number of samples for debug (default: None)")
+tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
 tf.app.flags.DEFINE_integer("window_batch", 3, "window size / batch size")
 
 
@@ -103,8 +103,6 @@ def main(_):
         FLAGS.context_maxlen = dataset['context_maxlen']
     if FLAGS.question_maxlen is None:
         FLAGS.question_maxlen = dataset['question_maxlen']
-    if FLAGS.debug_train_samples is not None:
-        FLAGS.log_batch_num = max([FLAGS.log_batch_num, FLAGS.debug_train_samples//FLAGS.batch_size])
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
