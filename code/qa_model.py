@@ -501,20 +501,18 @@ class QASystem(object):
         s, e = outputs
 
         best_spans, scores = zip(*[get_best_span(si, ei) for si, ei in zip(s, e)])
-        (a_s, a_e) = best_spans
-        assert a_s.get_shape().as_list == [None] # N
-        return (a_s, a_e)
+        assert best_spans.get_shape().as_list == [None] # N
+        return best_spans
 
     def predict_on_batch(self, session, dataset):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
         # prog = Progbar(target=batch_num)
-        predict_s, predict_e = [], []
+        predicts = []
         for i, batch in tqdm(enumerate(minibatches(dataset, self.config.batch_size, shuffle=False))):
-            s, e = self.answer(session, batch)
+            pred = self.answer(session, batch)
             # prog.update(i + 1)
-            predict_s.extend(s)
-            predict_e.extend(e)
-        return predict_s, predict_e
+            predicts.extend(pred)
+        return predicts
 
     def validate(self, sess, valid_dataset):
         """
@@ -546,9 +544,9 @@ class QASystem(object):
         N = len(dataset)
         sampleIndices = np.random.choice(N, sample, replace=False)
         evaluate_set = [dataset[i] for i in sampleIndices]
-        predict_s, predict_e = self.predict_on_batch(session, evaluate_set)
+        predicts = self.predict_on_batch(session, evaluate_set)
 
-        for example, start, end in zip(evaluate_set, predict_s, predict_e):
+        for example, (start, end) in zip(evaluate_set, predicts):
             q, _, c, _, (true_s, true_e) = example
             # print (start, end, true_s, true_e)
             context_words = [vocab[w] for w in c]
