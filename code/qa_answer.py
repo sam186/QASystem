@@ -29,7 +29,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_float("learning_rate", 0.005, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.15, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 25, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("batch_size", 32, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 0, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("state_size", 200, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("embedding_size", 100, "Size of the pretrained vocabulary.")
@@ -189,7 +189,7 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train-fei'
+    global_train_dir = '/tmp/cs224n-squad-train'
     if os.path.exists(global_train_dir):
         os.unlink(global_train_dir)
     if not os.path.exists(train_dir):
