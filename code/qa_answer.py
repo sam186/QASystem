@@ -124,6 +124,83 @@ def prepare_dev(prefix, dev_filename, vocab):
 
     return context_data, question_data, question_uuid_data
 
+def expand_vocab(prefix, dev_filename, vocab, embd):
+    # Don't check file size, since we could be using other datasets
+    dev_dataset = maybe_download(squad_base_url, dev_filename, prefix)
+    dev_data = data_from_json(os.path.join(prefix, dev_filename))
+    #context_data, question_data, question_uuid_data = read_dataset(dev_data, 'dev', vocab)
+    dataset = dev_data
+    context_data = []
+    query_data = []
+    question_uuid_data = []
+    tier = 'dev'
+    new_vocab = {}
+    found = 0
+    notfound = 0
+
+    for articles_id in tqdm(range(len(dataset['data'])), desc="Preprocessing {}".format(tier)):
+        article_paragraphs = dataset['data'][articles_id]['paragraphs']
+        for pid in range(len(article_paragraphs)):
+            context = article_paragraphs[pid]['context']
+            # The following replacements are suggested in the paper
+            # BidAF (Seo et al., 2016)
+            context = context.replace("''", '" ')
+            context = context.replace("``", '" ')
+
+            context_tokens = tokenize(context)
+
+            qas = article_paragraphs[pid]['qas']
+            for qid in range(len(qas)):
+                question = qas[qid]['question']
+                question_tokens = tokenize(question)
+                question_uuid = qas[qid]['id']
+
+                #context_ids = [str(vocab.get(w, qa_data.UNK_ID)) for w in context_tokens]
+                #qustion_ids = [str(vocab.get(w, qa_data.UNK_ID)) for w in question_tokens]
+                #print(context_ids)
+                for w in context_tokens:
+                    if not w in vocab:
+                        if not w in new_vocab:
+                            new_vocab[w] = 1
+                        else:
+                            new_vocab[w] += 1
+                        notfound +=1
+                    else:
+                        found += 1
+
+                for w in question_tokens:
+                    if not w in vocab:
+                        if not w in new_vocab:
+                            new_vocab[w] = 1
+                        else:
+                            new_vocab[w] += 1
+                        notfound +=1
+                    else:
+                        found +=1
+
+
+    print('found/not found: {}/{}, {}% not found'.format(found, notfound, 100 * notfound/float(found + notfound)))
+    print('New vocabulary:',len(new_vocab))
+
+    vocab_list = list(vocab.items())
+    vn = len(vocab_list)
+    for i in range((len(new_vocab))):
+        vocab_list.append((new_vocab.keys()[i], vn+i))
+
+    vocab = dict(vocab_list)
+    rev_vocab = dict([(x, y) for (y,x) in vocab_list])
+                #context_data.append(' '.join(context_ids))
+                #query_data.append(' '.join(qustion_ids))
+                #question_uuid_data.append(question_uuid)
+    #return context_data, question_data, question_uuid_data
+    _, dim = embd.shape
+    new_glove = np.random.randn(len(vocab), dim)
+    new_glove[:vn, :] = embd
+
+    #from IPython import embed; embed()
+
+    return vocab, rev_vocab, new_glove
+
 def strip(x):
     return map(int, x.strip().split(" "))
 
@@ -218,6 +295,12 @@ def main(_):
 
     dev_dirname = os.path.dirname(os.path.abspath(FLAGS.dev_path))
     dev_filename = os.path.basename(FLAGS.dev_path)
+
+    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
+    embeddings = load_glove_embeddings(embed_path)
+    # expand vocab
+    vocab, rev_vocab, embeddings = expand_vocab(dev_dirname, dev_filename, vocab, embeddings)
+
     context_data, question_data, question_uuid_data = prepare_dev(dev_dirname, dev_filename, vocab)
     context_len_data = [len(context.split()) for context in context_data]
     mydata = preprocessing(context_data, question_data, FLAGS.context_maxlen, FLAGS.question_maxlen)
@@ -226,10 +309,9 @@ def main(_):
     # ========= Model-specific =========
     # You must change the following code to adjust to your model
 
-    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
-    embeddings = load_glove_embeddings(embed_path)
     #encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
     #decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
+
 
     qa = QASystem(embeddings, FLAGS)
 
