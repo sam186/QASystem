@@ -24,15 +24,15 @@ def get_best_span(start_logits, end_logits):
     max_val = 0
     best_word_span = (0, 0)
     start_argmax_i = 0
-    for i, (start_logit, end_logit) in enumerate(zip(start_logits, end_logits)):
-        val1 = start_logit[start_argmax_i]
-        if val1 < start_logit:
-            val1 = start_logit
+    for i, (s_l, e_l) in enumerate(zip(start_logits, end_logits)):
+        val1 = start_logits[start_argmax_i]
+        if val1 < s_l:
+            val1 = s_l
             start_argmax_i = i
 
-        if val1 * end_logit > max_val:
+        if val1 * e_l > max_val:
             best_word_span = (start_argmax_i, i)
-            max_val = val1 * end_logit
+            max_val = val1 * e_l
     return best_word_span, float(max_val)
 
 
