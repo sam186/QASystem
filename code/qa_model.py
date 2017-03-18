@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import time, datetime
 import logging
-
+from tqdm import tqdm
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -508,7 +508,7 @@ class QASystem(object):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
         # prog = Progbar(target=batch_num)
         predict_s, predict_e = [], []
-        for i, batch in enumerate(minibatches(dataset, self.config.batch_size, shuffle=False)):
+        for i, batch in tqdm(enumerate(minibatches(dataset, self.config.batch_size, shuffle=False))):
             s, e = self.answer(session, batch)
             # prog.update(i + 1)
             predict_s.extend(s)
