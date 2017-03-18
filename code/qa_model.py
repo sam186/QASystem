@@ -10,7 +10,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 from operator import mul
 from tensorflow.python.ops import variable_scope as vs
-from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot, minibatch
+from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot, minibatch, get_best_span
 
 from evaluate import exact_match_score, f1_score
 
@@ -500,8 +500,9 @@ class QASystem(object):
 
         s, e = outputs
 
-        a_s = np.argmax(s, axis=1)
-        a_e = np.argmax(e, axis=1)
+        best_spans, scores = zip(*[get_best_span(si, ei) for si, ei in zip(s, e)])
+        (a_s, a_e) = best_spans
+        assert a_s.get_shape().as_list == [None] # N
         return (a_s, a_e)
 
     def predict_on_batch(self, session, dataset):
