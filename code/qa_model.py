@@ -501,7 +501,6 @@ class QASystem(object):
         s, e = outputs
 
         best_spans, scores = zip(*[get_best_span(si, ei) for si, ei in zip(s, e)])
-        assert best_spans.get_shape().as_list == [None] # N
         return best_spans
 
     def predict_on_batch(self, session, dataset):
