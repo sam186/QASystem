@@ -20,21 +20,19 @@ logger = logging.getLogger("hw3")
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
-def get_best_span(ypi, yp2i):
+def get_best_span(start_logits, end_logits):
     max_val = 0
     best_word_span = (0, 0)
-    for (ypif, yp2if) in zip(ypi, yp2i):
-        argmax_j1 = 0
-        for j in range(len(ypif)):
-            val1 = ypif[argmax_j1]
-            if val1 < ypif[j]:
-                val1 = ypif[j]
-                argmax_j1 = j
+    start_argmax_i = 0
+    for i, (start_logit, end_logit) in enumerate(zip(start_logits, end_logits)):
+        val1 = start_logit[start_argmax_i]
+        if val1 < start_logit:
+            val1 = start_logit
+            start_argmax_i = i
 
-            val2 = yp2if[j]
-            if val1 * val2 > max_val:
-                best_word_span = (argmax_j1, j)
-                max_val = val1 * val2
+        if val1 * end_logit > max_val:
+            best_word_span = (start_argmax_i, i)
+            max_val = val1 * end_logit
     return best_word_span, float(max_val)
 
 
