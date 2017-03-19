@@ -131,7 +131,7 @@ class Encoder(object):
         #self.dropout = dropout
         #logging.info("Dropout rate for encoder: {}".format(self.dropout))
 
-    def encode(self, inputs, mask, encoder_state_input, dropout = 1.0):
+    def encode(self, inputs, mask, encoder_state_input, J, dropout = 1.0):
         """
         In a generalized encode function, you pass in your inputs,
         sequence_length, and an initial hidden state input into this function.
@@ -144,13 +144,18 @@ class Encoder(object):
                  It can be context-level representation, word-level representation,
                  or both.
         """
+        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), axis=1)
+        sequence_length = tf.reshape(sequence_length, [-1,])
 
         logging.debug('-'*5 + 'encode' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
         # Backward direction cell
         lstm_bw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
-
+        d_in = inputs.get_shape().as_list()[-1]
+        W_input = tf.get_variable('Winput', initializer=tf.contrib.layers.xavier_initializer(), shape=(d_in, self.state_size), dtype=tf.float32)
+        inputs_transformed = tf.matmul(tf.reshape(inputs, shape = [-1, d_in]), W_input)
+        inputs_transformed = tf.reshape(inputs_transformed, shape = [-1, J, self.state_size])
 
         lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
         lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
@@ -161,12 +166,10 @@ class Encoder(object):
             initial_state_fw, initial_state_bw = encoder_state_input
 
         logging.debug('Inputs: %s' % str(inputs))
-        sequence_length = tf.reduce_sum(tf.cast(mask, 'int32'), axis=1)
-        sequence_length = tf.reshape(sequence_length, [-1,])
         # Get lstm cell output
         (outputs_fw, outputs_bw), (final_state_fw, final_state_bw) = tf.nn.bidirectional_dynamic_rnn(cell_fw=lstm_fw_cell,\
                                                       cell_bw=lstm_bw_cell,\
-                                                      inputs=inputs,\
+                                                      inputs=inputs_transformed,\
                                                       sequence_length=sequence_length,
                                                       initial_state_fw=initial_state_fw,\
                                                       initial_state_bw=initial_state_bw,
@@ -348,15 +351,15 @@ class QASystem(object):
         #         e.g. h = encode_context(x, u_state)   # get H (2d*T) as representation of x
         with tf.variable_scope('q'):
             u, question_repr, u_state = \
-                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None, dropout = self.dropout_placeholder)
+                 self.encoder.encode(inputs=q, mask=self.question_mask_placeholder, encoder_state_input=None, J = self.JQ, dropout = self.dropout_placeholder)
             if self.config.QA_ENCODER_SHARE:
                 tf.get_variable_scope().reuse_variables()
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, J = self.JX, dropout = self.dropout_placeholder)
         if not self.config.QA_ENCODER_SHARE:
             with tf.variable_scope('c'):
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, J = self.JX, dropout = self.dropout_placeholder)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         d_en = self.config.encoder_state_size*2
         assert h.get_shape().as_list() == [None, None, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())

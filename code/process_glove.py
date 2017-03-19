@@ -30,7 +30,7 @@ def setup_args():
     #home = os.path.join(os.path.dirname(os.path.realpath(__file__)))
     home = os.getcwd()
     vocab_dir = os.path.join(home, "data", "squad")
-    glove_dir = os.path.join(home, "data", "dwr")
+    glove_dir = os.path.join(home, "download", "dwr")
     source_dir = os.path.join(home, "data", "squad")
     parser.add_argument("--source_dir", default=source_dir)
     parser.add_argument("--glove_dir", default=glove_dir)
@@ -46,8 +46,9 @@ def process_glove(args, save_path, size=4e5):
     :param vocab_list: [vocab]
     :return:
     """
+    size = 1917495
     if not gfile.Exists(save_path + ".npz"):
-        glove_path = os.path.join(args.glove_dir, "glove.6B.{}d.txt".format(args.glove_dim))
+        glove_path = os.path.join(args.glove_dir, "glove.42B.{}d.txt".format(args.glove_dim))
         glove_vocab = []
         glove = np.random.randn(int(size), args.glove_dim)
         idx = 0
