@@ -296,7 +296,7 @@ class QASystem(object):
         self.attention = Attention()
         self.config = config
 
-        # ==== set up placeholder tokens ========
+        # ==== set up placeholder tokens ====
         self.question_placeholder = tf.placeholder(dtype=tf.int32, name="q", shape=(None, None))
         self.question_mask_placeholder = tf.placeholder(dtype=tf.bool, name="q_mask", shape=(None, None))
         self.context_placeholder = tf.placeholder(dtype=tf.int32, name="c", shape=(None, None))
@@ -516,13 +516,12 @@ class QASystem(object):
     def predict_on_batch(self, session, dataset):
         batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
         # prog = Progbar(target=batch_num)
-        predict_s, predict_e = [], []
+        predicts = []
         for i, batch in tqdm(enumerate(minibatches(dataset, self.config.batch_size, shuffle=False))):
-            s, e = self.answer(session, batch)
+            pred = self.answer(session, batch)
             # prog.update(i + 1)
-            predict_s.extend(s)
-            predict_e.extend(e)
-        return predict_s, predict_e
+            predicts.extend(pred)
+        return predicts
 
     def validate(self, sess, valid_dataset):
         """
