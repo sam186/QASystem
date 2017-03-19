@@ -124,7 +124,7 @@ def prepare_dev(prefix, dev_filename, vocab):
 
     return context_data, question_data, question_uuid_data
 
-def expand_vocab(prefix, dev_filename, vocab, embd):
+def expand_vocab(prefix, dev_filename, vocab, embd, raw_glove, raw_glove_vocab):
     # Don't check file size, since we could be using other datasets
     dev_dataset = maybe_download(squad_base_url, dev_filename, prefix)
     dev_data = data_from_json(os.path.join(prefix, dev_filename))
@@ -196,8 +196,24 @@ def expand_vocab(prefix, dev_filename, vocab, embd):
     _, dim = embd.shape
     new_glove = np.random.randn(len(vocab), dim)
     new_glove[:vn, :] = embd
-
+    
+    found = 0
+    for i in range(vn, vn+(len(new_vocab))):
+        word = vocab_list[i][0]
+        if word in raw_glove_vocab:
+            found += 1
+            idx = raw_glove_vocab[word]
+            new_glove[i, :] = raw_glove[idx, :]
+        if word.capitalize() in raw_glove_vocab:
+            found += 1
+            idx = raw_glove_vocab[word.capitalize()]
+            new_glove[i, :] = raw_glove[idx, :]
+        if word.upper() in raw_glove_vocab:
+            found += 1
+            idx = raw_glove_vocab[word.upper()]
+            new_glove[i, :] = raw_glove[idx, :]
     #from IPython import embed; embed()
+    print("{} unseen words found embeddings".format(found))
 
     return vocab, rev_vocab, new_glove
 
@@ -298,8 +314,16 @@ def main(_):
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
+    
+    
+    raw_embed_path = pjoin("data", "squad", "glove.untrimmed.{}.npz".format(FLAGS.embedding_size))
+    raw_glove_data = np.load(raw_embed_path)
+    raw_glove = raw_glove_data['glove']
+    raw_glove_vocab = raw_glove_data['glove_vocab_dict'][()]
+    
+    
     # expand vocab
-    vocab, rev_vocab, embeddings = expand_vocab(dev_dirname, dev_filename, vocab, embeddings)
+    vocab, rev_vocab, embeddings = expand_vocab(dev_dirname, dev_filename, vocab, embeddings, raw_glove, raw_glove_vocab)
 
     context_data, question_data, question_uuid_data = prepare_dev(dev_dirname, dev_filename, vocab)
     context_len_data = [len(context.split()) for context in context_data]
