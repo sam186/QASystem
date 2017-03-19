@@ -125,6 +125,7 @@ def prepare_dev(prefix, dev_filename, vocab):
     return context_data, question_data, question_uuid_data
 
 def expand_vocab(prefix, dev_filename, vocab, embd, raw_glove, raw_glove_vocab):
+
     # Don't check file size, since we could be using other datasets
     dev_dataset = maybe_download(squad_base_url, dev_filename, prefix)
     dev_data = data_from_json(os.path.join(prefix, dev_filename))
@@ -262,6 +263,7 @@ def generate_answers(sess, model, dataset, rev_vocab):
 
     for i, uuid in enumerate(question_uuid_data):
         start, end = predicts[i]
+
         context_length = context_len_data[i]
         context = strip(context_data[i])
         end = min(end, context_length - 1)

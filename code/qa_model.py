@@ -513,6 +513,17 @@ class QASystem(object):
             predicts.extend(pred)
         return predicts
 
+    def predict_on_batch(self, session, dataset):
+        batch_num = int(np.ceil(len(dataset) * 1.0 / self.config.batch_size))
+        # prog = Progbar(target=batch_num)
+        predict_s, predict_e = [], []
+        for i, batch in tqdm(enumerate(minibatches(dataset, self.config.batch_size, shuffle=False))):
+            s, e = self.answer(session, batch)
+            # prog.update(i + 1)
+            predict_s.extend(s)
+            predict_e.extend(e)
+        return predict_s, predict_e
+
     def validate(self, sess, valid_dataset):
         """
         Iterate through the validation dataset and determine what
@@ -557,6 +568,7 @@ class QASystem(object):
                 predict_answer = ''
             f1 += f1_score(predict_answer, true_answer)
             em += exact_match_score(predict_answer, true_answer)
+
 
         f1 = 100 * f1 / sample
         em = 100 * em / sample
