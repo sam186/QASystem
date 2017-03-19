@@ -92,13 +92,12 @@ class Attention(object):
         # u [None, JQ, d_en]
 
         # get similarity
-        h_aug = tf.reshape(h, shape = [-1, JX, 1, d_en])
-        u_aug = tf.reshape(u, shape = [-1, 1, JQ, d_en])
+        h_aug = tf.tile(tf.reshape(h, shape = [-1, JX, 1, d_en]),[1, 1, JQ, 1])
+        u_aug = tf.tile(tf.reshape(u, shape = [-1, 1, JQ, d_en]),[1, JX, 1, 1])
         h_mask_aug = tf.tile(tf.expand_dims(h_mask, -1), [1, 1, JQ]) # [N, JX] -(expend)-> [N, JX, 1] -(tile)-> [N, JX, JQ]
         u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
         # s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
-        s = get_logits([h_aug, u_aug], None, True, 
-                              is_train=(dropout<1.0), func='tri_linear')  # [N, M, JX, JQ]
+        s = get_logits([h_aug, u_aug], None, True, is_train=(dropout<1.0), func='tri_linear')  # [N, M, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
         s = softmax_mask_prepro(s, hu_mask_aug)
 
@@ -107,7 +106,7 @@ class Attention(object):
 
         #     use a_x to get u_a
         a_x = tf.reshape(a_x, shape = [-1, JX, JQ, 1])
-        u_aug = tf.reshape(u_aug, shape = [-1, 1, JQ, d_en])
+        u_aug = tf.reshape(u, shape = [-1, 1, JQ, d_en])
         u_a = tf.reduce_sum(tf.multiply(a_x, u_aug), axis = -2)# a_x * u: [N, JX, JQ](weight) * [N, JQ, d_en] -> [N, JX, d_en]
         logging.debug('Context with attention: %s' % str(u_a))
 
