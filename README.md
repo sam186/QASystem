@@ -4,6 +4,12 @@ Remember to change the parameters in `code/train.py`. Run your model by:
     
     $ python code/train.py
 
+## How to check locally
+1. python process_glove.py --glove_dir download
+2. export CUDA_VISIBLE_DEVICES=''
+   python code/qa_answer.py --train_dir train
+3. python code/evaluate.py data/squad/dev-v1.1.json dev-prediction.json
+
 ## How to submit:
 1. Change the parameters in `code/qa_answer.py`, make sure they're the same as what you used in `code/train.py`. You need to specify `context_maxlen`, `question_maxlen` (Cannot be None).
 
