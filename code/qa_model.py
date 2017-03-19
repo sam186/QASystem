@@ -204,7 +204,7 @@ class Decoder(object):
                  self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None, dropout = dropout)
         with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
-                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout)
+                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout, output_dropout = True)
         # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
         s, e = self.get_logit(m_2, JX) #[N, JX]*2
@@ -213,7 +213,7 @@ class Decoder(object):
         e = softmax_mask_prepro(e, context_mask)
         return (s, e)
 
-    def decode_LSTM(self, inputs, mask, encoder_state_input, dropout = 1.0):
+    def decode_LSTM(self, inputs, mask, encoder_state_input, dropout = 1.0, output_dropout = False):
         logging.debug('-'*5 + 'decode_LSTM' + '-'*5)
         # Forward direction cell
         lstm_fw_cell = tf.nn.rnn_cell.LSTMCell(self.state_size, state_is_tuple=True)
@@ -222,8 +222,12 @@ class Decoder(object):
 
         # add dropout
 
-        lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
-        lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
+        if output_dropout:
+            lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout, output_keep_prob = dropout)
+            lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout, output_keep_prob = dropout)
+        else:
+            lstm_fw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_fw_cell, input_keep_prob = dropout)
+            lstm_bw_cell = tf.nn.rnn_cell.DropoutWrapper(lstm_bw_cell, input_keep_prob = dropout)
 
         initial_state_fw = None
         initial_state_bw = None
