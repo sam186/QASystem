@@ -627,6 +627,6 @@ class QASystem(object):
             if f1>f1_best:
             	f1_best = f1
             saver = tf.train.Saver()
-            saver.save(session, train_dir+'/fancier_model_'+str(epoch+1))
+            saver.save(session, train_dir+'/fancier_model')
             logging.info('New best f1 in val set')
             logging.info('')
