@@ -97,7 +97,7 @@ class Attention(object):
         h_mask_aug = tf.tile(tf.expand_dims(h_mask, -1), [1, 1, JQ]) # [N, JX] -(expend)-> [N, JX, 1] -(tile)-> [N, JX, JQ]
         u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
         # s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
-        s = get_logits([h_aug, u_aug], None, True, is_train=(dropout<1.0), func='tri_linear')  # [N, M, JX, JQ]
+        s = get_logits([h_aug, u_aug], None, True, is_train=(dropout<1.0), func='tri_linear', input_keep_prob=dropout)  # [N, M, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
         s = softmax_mask_prepro(s, hu_mask_aug)
 
@@ -625,8 +625,8 @@ class QASystem(object):
             f1, em = self.evaluate_answer(session, validation_set, vocab, sample=self.config.model_selection_sample_size, log=True)
             # Saving the model
             if f1>f1_best:
-                f1_best = f1
-                saver = tf.train.Saver()
-                saver.save(session, train_dir+'/fancier_model')
-                logging.info('New best f1 in val set')
+            	f1_best = f1
+            saver = tf.train.Saver()
+            saver.save(session, train_dir+'/fancier_model_'+str(epoch+1))
+            logging.info('New best f1 in val set')
             logging.info('')
