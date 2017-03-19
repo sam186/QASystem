@@ -258,11 +258,10 @@ def generate_answers(sess, model, dataset, rev_vocab):
     answers = {}
 
     mydata, context_data, context_len_data, question_uuid_data = dataset
-    pred_s, pred_e = model.predict_on_batch(sess, mydata)
+    predicts = model.predict_on_batch(sess, mydata)
 
     for i, uuid in enumerate(question_uuid_data):
-        start = pred_s[i]
-        end = pred_e[i]
+        start, end = predicts[i]
         context_length = context_len_data[i]
         context = strip(context_data[i])
         end = min(end, context_length - 1)
