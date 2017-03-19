@@ -11,6 +11,7 @@ import tensorflow as tf
 from operator import mul
 from tensorflow.python.ops import variable_scope as vs
 from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot, minibatch, get_best_span
+from my.tensorflow.nn import get_logits
 
 from evaluate import exact_match_score, f1_score
 

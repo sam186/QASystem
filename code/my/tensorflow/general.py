@@ -1,5 +1,3 @@
-from itertools import zip_longest
-
 import tensorflow as tf
 from functools import reduce
 from operator import mul
