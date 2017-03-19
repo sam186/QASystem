@@ -68,7 +68,7 @@ class Attention(object):
     def __init__(self):
         pass
 
-    def calculate(self, h, u, h_mask, u_mask, JX, JQ):
+    def calculate(self, h, u, h_mask, u_mask, JX, JQ, dropout = 1.0):
         # compare the question representation with all the context hidden states.
         #         e.g. S = h.T * u
         #              a_x = softmax(S)
@@ -95,9 +95,10 @@ class Attention(object):
         u_aug = tf.reshape(u, shape = [-1, 1, JQ, d_en])
         h_mask_aug = tf.tile(tf.expand_dims(h_mask, -1), [1, 1, JQ]) # [N, JX] -(expend)-> [N, JX, 1] -(tile)-> [N, JX, JQ]
         u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
-        s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
+        # s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
+        s = get_logits([h_aug, u_aug], None, True, 
+                              is_train=(dropout<1.0), func='tri_linear')  # [N, M, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
-
         s = softmax_mask_prepro(s, hu_mask_aug)
 
         # get a_x
@@ -371,7 +372,7 @@ class QASystem(object):
         #              h_hat = sum(a_q*h)
         #              g = combine(u, h, u_hat, h_hat)
         # --------op1--------------
-        g = self.attention.calculate(h, u, self.context_mask_placeholder, self.question_mask_placeholder, JX = self.JX, JQ = self.JQ) # concat[h, u_a, h*u_a, h*h_a]
+        g = self.attention.calculate(h, u, self.context_mask_placeholder, self.question_mask_placeholder, JX = self.JX, JQ = self.JQ, dropout = self.dropout_placeholder) # concat[h, u_a, h*u_a, h*h_a]
         d_com = d_en*4
         assert g.get_shape().as_list() == [None, None, d_com], "Expected {}, got {}".format([None, JX, d_com], g.get_shape().as_list())
 
