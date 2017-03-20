@@ -16,10 +16,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.002, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.0016, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.20, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 24, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("batch_size", 40, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 25, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("encoder_state_size", 100, "Size of each encoder model layer.")
 tf.app.flags.DEFINE_integer("decoder_state_size", 100, "Size of each decoder model layer.")

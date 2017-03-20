@@ -205,12 +205,26 @@ class Decoder(object):
                  self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None, dropout = dropout)
         with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
-                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout)
+                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=None, dropout = dropout)
         # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
-        s, e = self.get_logit(m_2, JX) #[N, JX]*2
+        with tf.variable_scope('start'):
+            s = self.get_logit(m_2, JX) #[N, JX]*2
         # or s, e = self.get_logit_start_end(m_2) #[N, JX]*2
         s = softmax_mask_prepro(s, context_mask)
+
+        print(s.get_shape())
+        
+        s_prob = tf.nn.softmax(s)
+
+        print(s_prob.get_shape())
+
+        s_prob = tf.tile(tf.expand_dims(s_prob, 2), [1,1,d_de])
+
+        e_input = tf.concat(2, [m_2, m_2 * s_prob, s_prob])
+        with tf.variable_scope('end'):
+            e = self.get_logit(e_input, JX) #[N, JX]*2
+
         e = softmax_mask_prepro(e, context_mask)
         return (s, e)
 
@@ -260,15 +274,11 @@ class Decoder(object):
         assert X.get_shape().ndims == 3
         X = tf.reshape(X, shape = [-1, d])
         W1 = tf.get_variable('W1', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
-        W2 = tf.get_variable('W2', initializer=tf.contrib.layers.xavier_initializer(), shape=(d, 1), dtype=tf.float32)
         pred1 = tf.matmul(X, W1)
-        pred2= tf.matmul(X, W2)
         pred1 = tf.reshape(pred1, shape = [-1, JX])
-        pred2 = tf.reshape(pred2, shape = [-1, JX])
         tf.summary.histogram('logit_start', pred1)
-        tf.summary.histogram('logit_end', pred2)
-        return pred1, pred2
-
+        return pred1
+    
     def get_logit_start_end(self, X, JX):
         d = X.get_shape().as_list()[-1]
         X = tf.reshape(X, shape = [-1, d])
