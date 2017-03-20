@@ -197,7 +197,7 @@ def expand_vocab(prefix, dev_filename, vocab, embd, raw_glove, raw_glove_vocab):
     _, dim = embd.shape
     new_glove = np.random.randn(len(vocab), dim)
     new_glove[:vn, :] = embd
-    
+
     found = 0
     for i in range(vn, vn+(len(new_vocab))):
         word = vocab_list[i][0]
@@ -283,12 +283,14 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train'
-    if os.path.exists(global_train_dir):
-        os.unlink(global_train_dir)
-    if not os.path.exists(train_dir):
-        os.makedirs(train_dir)
-    os.symlink(os.path.abspath(train_dir), global_train_dir)
+    #global_train_dir = '/tmp/cs224n-squad-train'
+    #if os.path.exists(global_train_dir):
+    #    os.unlink(global_train_dir)
+    #if not os.path.exists(train_dir):
+    #    os.makedirs(train_dir)
+    #os.symlink(os.path.abspath(train_dir), global_train_dir)
+    global_train_dir = train_dir
+
     return global_train_dir
 
 
@@ -315,14 +317,14 @@ def main(_):
 
     embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
     embeddings = load_glove_embeddings(embed_path)
-    
-    
+
+
     raw_embed_path = pjoin("data", "squad", "glove.untrimmed.{}.npz".format(FLAGS.embedding_size))
     raw_glove_data = np.load(raw_embed_path)
     raw_glove = raw_glove_data['glove']
     raw_glove_vocab = raw_glove_data['glove_vocab_dict'][()]
-    
-    
+
+
     # expand vocab
     vocab, rev_vocab, embeddings = expand_vocab(dev_dirname, dev_filename, vocab, embeddings, raw_glove, raw_glove_vocab)
 
