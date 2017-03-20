@@ -20,7 +20,7 @@ logger = logging.getLogger("hw3")
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
-def get_best_span2(start_logits, end_logits, context_ids):
+def get_best_span(start_logits, end_logits, context_ids):
     start_sentence_logits = []
     end_sentence_logits = []
     new_start_sentence = []
@@ -58,11 +58,10 @@ def get_best_span2(start_logits, end_logits, context_ids):
                 max_val = val1 + val2
     len_pre = 0
     for i in range(best_sent_idx):
-        # print len(start_sentence_logits[i])
         len_pre += len(start_sentence_logits[i])
     # print best_sent_idx
-    # print best_word_span
-    return (len_pre + best_word_span[0], len_pre + best_word_span[1]), max_val
+    best_word_span = (len_pre + best_word_span[0], len_pre + best_word_span[1])
+    return best_word_span, max_val
 
 def get_best_span1(start_logits, end_logits):
     # original answer
