@@ -353,11 +353,11 @@ class QASystem(object):
             if self.config.QA_ENCODER_SHARE:
                 tf.get_variable_scope().reuse_variables()
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None, dropout = self.dropout_placeholder)
         if not self.config.QA_ENCODER_SHARE:
             with tf.variable_scope('c'):
                 h, context_repr, context_state =\
-                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=u_state, dropout = self.dropout_placeholder)
+                     self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None, dropout = self.dropout_placeholder)
                  # self.encoder.encode(inputs=x, mask=self.context_mask_placeholder, encoder_state_input=None)
         d_en = self.config.encoder_state_size*2
         assert h.get_shape().as_list() == [None, None, d_en], "Expected {}, got {}".format([None, JX, d_en], h.get_shape().as_list())
