@@ -505,7 +505,7 @@ class QASystem(object):
 
         s, e = outputs
 
-        best_spans, scores = zip(*[get_best_span(si, ei) for si, ei in zip(s, e)])
+        best_spans, scores = zip(*[get_best_span(si, ei, ci) for si, ei, ci in zip(s, e, context_batch)])
         return best_spans
 
     def predict_on_batch(self, session, dataset):
