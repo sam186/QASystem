@@ -30,7 +30,7 @@ def setup_args():
     #home = os.path.join(os.path.dirname(os.path.realpath(__file__)))
     home = os.getcwd()
     vocab_dir = os.path.join(home, "data", "squad")
-    glove_dir = os.path.join(home, "data", "dwr")
+    glove_dir = os.path.join(home, "download", "dwr")
     source_dir = os.path.join(home, "data", "squad")
     parser.add_argument("--source_dir", default=source_dir)
     parser.add_argument("--glove_dir", default=glove_dir)
