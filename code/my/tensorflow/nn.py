@@ -13,9 +13,9 @@ def linear(args, output_size, bias, bias_start=0.0, scope=None, squeeze=False, w
         args = [args]
 
     flat_args = [flatten(arg, 1) for arg in args]
-    if input_keep_prob < 1.0:
-        assert is_train is not None
-        flat_args = [tf.cond(is_train, lambda: tf.nn.dropout(arg, input_keep_prob), lambda: arg)
+    #if input_keep_prob < 1.0:
+    #   assert is_train is not None
+    flat_args = [tf.cond(is_train, lambda: tf.nn.dropout(arg, input_keep_prob), lambda: arg)
                      for arg in flat_args]
     flat_out = _linear(flat_args, output_size, bias, bias_start=bias_start, scope=scope)
     out = reconstruct(flat_out, args[0], 1)
