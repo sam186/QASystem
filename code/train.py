@@ -16,10 +16,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-tf.app.flags.DEFINE_float("learning_rate", 0.0015, "Learning rate.")
+tf.app.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.app.flags.DEFINE_float("dropout", 0.20, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.app.flags.DEFINE_integer("batch_size", 24, "Batch size to use during training.")
+tf.app.flags.DEFINE_integer("batch_size", 32, "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("epochs", 25, "Number of epochs to train.")
 tf.app.flags.DEFINE_integer("encoder_state_size", 100, "Size of each encoder model layer.")
 tf.app.flags.DEFINE_integer("decoder_state_size", 100, "Size of each decoder model layer.")
@@ -44,7 +44,7 @@ tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.
 tf.app.flags.DEFINE_string("tensorboard", False, "Write tensorboard log or not.")
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("debug_train_samples", None, "number of samples for debug (default: None)")
-tf.app.flags.DEFINE_string("ema_weight_decay", 0.9999, "exponential decay for moving averages ")
+tf.app.flags.DEFINE_string("ema_weight_decay", 0.999, "exponential decay for moving averages ")
 tf.app.flags.DEFINE_string("evaluate_sample_size", 400, "number of samples for evaluation (default: 400)")
 tf.app.flags.DEFINE_string("model_selection_sample_size", 1000, "number of samples for selecting best model (default: 1000)")
 tf.app.flags.DEFINE_integer("window_batch", 3, "window size / batch size")
@@ -84,7 +84,7 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train-233'
+    global_train_dir = '/tmp/cs224n-squad-train'
     if os.path.exists(global_train_dir):
         os.unlink(global_train_dir)
     if not os.path.exists(train_dir):

@@ -204,7 +204,7 @@ class Decoder(object):
                  self.decode_LSTM(inputs=g, mask=context_mask, encoder_state_input=None, dropout = dropout)
         with tf.variable_scope('m'):
             m_2, m_2_repr, m_2_state = \
-                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout, output_dropout = True)
+                 self.decode_LSTM(inputs=m, mask=context_mask, encoder_state_input=m_state, dropout = dropout)
         # assert m_2.get_shape().as_list() == [None, JX, d_en2]
 
         s, e = self.get_logit(m_2, JX) #[N, JX]*2
@@ -454,7 +454,7 @@ class QASystem(object):
             feed_dict[self.answer_start_placeholders] = start
             feed_dict[self.answer_end_placeholders] = end
         if is_train:
-            feed_dict[self.dropout_placeholder] = 0.8
+            feed_dict[self.dropout_placeholder] = 0.6
         else:
             feed_dict[self.dropout_placeholder] = 1.0
 
