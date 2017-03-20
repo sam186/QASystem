@@ -56,7 +56,7 @@ def get_best_span(start_logits, end_logits, context_ids):
         len_pre += len(start_sentence_logits[i])
     return (len_pre + best_word_span[0], len_pre + best_word_span[1]), max_val
 
-def get_best_span(start_logits, end_logits)
+def get_best_span(start_logits, end_logits):
     # original answer
     # a_s = np.argmax(start_logits)
     # a_e = np.argmax(end_logits)
