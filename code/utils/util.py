@@ -20,7 +20,43 @@ logger = logging.getLogger("hw3")
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
-def get_best_span(start_logits, end_logits):
+def get_best_span(start_logits, end_logits, context_ids):
+    start_sentence_logits = []
+    end_sentence_logits = []
+    new_start_sentence = []
+    new_end_sentence = []
+    for i, c_id in enumerate(context_ids):
+        new_start_sentence.append(start_logits[i])
+        new_end_sentence.append(end_logits[i])
+        if c_id == 6: # dot id, represents the end of a sentence
+            start_sentence_logits.append(new_start_sentence)
+            end_sentence_logits.append(new_end_sentence)
+            new_start_sentence = []
+            new_end_sentence = []
+
+    best_word_span = (0, 0)
+    best_sent_idx = 0
+    argmax_j1 = 0
+    max_val = start_logits[0] + end_logits[0]
+    for f, (ypif, yp2if) in enumerate(zip(start_sentence_logits, end_sentence_logits)):
+        argmax_j1 = 0
+        for j in range(len(ypif)):
+            val1 = ypif[argmax_j1]
+            if val1 < ypif[j]:
+                val1 = ypif[j]
+                argmax_j1 = j
+
+            val2 = yp2if[j]
+            if val1 + val2 > max_val:
+                best_word_span = (argmax_j1, j)
+                best_sent_idx = f
+                max_val = val1 + val2
+    len_pre = 0
+    for i in range(best_sent_idx - 1):
+        len_pre += len(start_sentence_logits[i])
+    return (len_pre + best_word_span[0], len_pre + best_word_span[1]), max_val
+
+def get_best_span(start_logits, end_logits)
     # original answer
     # a_s = np.argmax(start_logits)
     # a_e = np.argmax(end_logits)
@@ -49,7 +85,6 @@ def get_best_span(start_logits, end_logits):
     #     print("original: %.4f " % (start_logits[a_s] + end_logits[a_e]))
 
     return best_word_span, float(max_val)
-
 
 def read_conll(fstream):
     """
