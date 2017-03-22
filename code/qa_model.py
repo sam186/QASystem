@@ -11,7 +11,6 @@ import tensorflow as tf
 from operator import mul
 from tensorflow.python.ops import variable_scope as vs
 from utils.util import ConfusionMatrix, Progbar, minibatches, one_hot, minibatch, get_best_span
-from my.tensorflow.nn import get_logits
 
 from evaluate import exact_match_score, f1_score
 
@@ -97,7 +96,7 @@ class Attention(object):
         h_mask_aug = tf.tile(tf.expand_dims(h_mask, -1), [1, 1, JQ]) # [N, JX] -(expend)-> [N, JX, 1] -(tile)-> [N, JX, JQ]
         u_mask_aug = tf.tile(tf.expand_dims(u_mask, -2), [1, JX, 1]) # [N, JQ] -(expend)-> [N, 1, JQ] -(tile)-> [N, JX, JQ]
         # s = tf.reduce_sum(tf.multiply(h_aug, u_aug), axis = -1) # h * u: [N, JX, d_en] * [N, JQ, d_en] -> [N, JX, JQ]
-        s = get_logits([h_aug, u_aug], None, True, is_train=(dropout<1.0), func='tri_linear', input_keep_prob=dropout)  # [N, M, JX, JQ]
+        s = self.get_logits([h_aug, u_aug], None, True, is_train=(dropout<1.0), func='tri_linear', input_keep_prob=dropout)  # [N, M, JX, JQ]
         hu_mask_aug = h_mask_aug & u_mask_aug
         s = softmax_mask_prepro(s, hu_mask_aug)
 
@@ -124,6 +123,62 @@ class Attention(object):
         h_0_u_a = h*u_a #[None, JX, d_en]
         h_0_h_a = h*h_a #[None, JX, d_en]
         return tf.concat(2,[h, u_a, h_0_u_a, h_0_h_a])
+
+    # this function is from https://github.com/allenai/bi-att-flow/tree/master/my/tensorflow
+    def get_logits(args, size, bias, bias_start=0.0, scope=None, mask=None, wd=0.0, input_keep_prob=1.0, is_train=None, func=None):
+
+        def linear_logits(args, bias, bias_start=0.0, scope=None, mask=None, wd=0.0, input_keep_prob=1.0, is_train=None):
+
+            def linear(args, output_size, bias, bias_start=0.0, scope=None, squeeze=False, wd=0.0, input_keep_prob=1.0,
+                       is_train=None):
+                if args is None or (nest.is_sequence(args) and not args):
+                    raise ValueError("`args` must be specified")
+                if not nest.is_sequence(args):
+                    args = [args]
+
+                def flatten(tensor, keep):
+                    fixed_shape = tensor.get_shape().as_list()
+                    start = len(fixed_shape) - keep
+                    left = reduce(mul, [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start)])
+                    out_shape = [left] + [fixed_shape[i] or tf.shape(tensor)[i] for i in range(start, len(fixed_shape))]
+                    flat = tf.reshape(tensor, out_shape)
+                    return flat
+
+                flat_args = [flatten(arg, 1) for arg in args]
+                #if input_keep_prob < 1.0:
+                #   assert is_train is not None
+                flat_args = [tf.cond(is_train, lambda: tf.nn.dropout(arg, input_keep_prob), lambda: arg)
+                                 for arg in flat_args]
+                flat_out = _linear(flat_args, output_size, bias, bias_start=bias_start, scope=scope)
+                
+                def reconstruct(tensor, ref, keep):
+                    ref_shape = ref.get_shape().as_list()
+                    tensor_shape = tensor.get_shape().as_list()
+                    ref_stop = len(ref_shape) - keep
+                    tensor_start = len(tensor_shape) - keep
+                    pre_shape = [ref_shape[i] or tf.shape(ref)[i] for i in range(ref_stop)]
+                    keep_shape = [tensor_shape[i] or tf.shape(tensor)[i] for i in range(tensor_start, len(tensor_shape))]
+                    # pre_shape = [tf.shape(ref)[i] for i in range(len(ref.get_shape().as_list()[:-keep]))]
+                    # keep_shape = tensor.get_shape().as_list()[-keep:]
+                    target_shape = pre_shape + keep_shape
+                    out = tf.reshape(tensor, target_shape)
+                    return out
+
+                out = reconstruct(flat_out, args[0], 1)
+                if squeeze:
+                    out = tf.squeeze(out, [len(args[0].get_shape().as_list())-1])
+
+                return out
+
+            with tf.variable_scope(scope or "Linear_Logits"):
+                logits = linear(args, 1, bias, bias_start=bias_start, squeeze=True, scope='first',
+                                wd=wd, input_keep_prob=input_keep_prob, is_train=is_train)
+                return logits
+
+        assert len(args) == 2
+        new_arg = args[0] * args[1]
+        return linear_logits([args[0], args[1], new_arg], bias, bias_start=bias_start, scope=scope, mask=mask, wd=wd, input_keep_prob=input_keep_prob,
+                             is_train=is_train)
 
 class Encoder(object):
     def __init__(self, vocab_dim, state_size, dropout = 0):
