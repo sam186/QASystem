@@ -50,7 +50,7 @@ tf.app.flags.DEFINE_string("answer_size", 2, "Number of features to represent th
 tf.app.flags.DEFINE_string("RE_TRAIN_EMBED", False, "Max length of the context (default: 400)")
 tf.app.flags.DEFINE_string("optimizer", "adam", "adam / sgd")
 tf.app.flags.DEFINE_string("decoder_hidden_size", 100, "Number of decoder_hidden_size.")
-tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", False, "QA_ENCODER_SHARE weights.")
+tf.app.flags.DEFINE_string("QA_ENCODER_SHARE", True, "QA_ENCODER_SHARE weights.")
 tf.app.flags.DEFINE_string("ema_weight_decay", 0.9999, "exponential decay for moving averages ")
 
 def initialize_model(session, model, train_dir):
@@ -124,6 +124,100 @@ def prepare_dev(prefix, dev_filename, vocab):
 
     return context_data, question_data, question_uuid_data
 
+def expand_vocab(prefix, dev_filename, vocab, embd, raw_glove, raw_glove_vocab):
+
+    # Don't check file size, since we could be using other datasets
+    dev_dataset = maybe_download(squad_base_url, dev_filename, prefix)
+    dev_data = data_from_json(os.path.join(prefix, dev_filename))
+    #context_data, question_data, question_uuid_data = read_dataset(dev_data, 'dev', vocab)
+    dataset = dev_data
+    context_data = []
+    query_data = []
+    question_uuid_data = []
+    tier = 'dev'
+    new_vocab = {}
+    found = 0
+    notfound = 0
+
+    for articles_id in tqdm(range(len(dataset['data'])), desc="Preprocessing {}".format(tier)):
+        article_paragraphs = dataset['data'][articles_id]['paragraphs']
+        for pid in range(len(article_paragraphs)):
+            context = article_paragraphs[pid]['context']
+            # The following replacements are suggested in the paper
+            # BidAF (Seo et al., 2016)
+            context = context.replace("''", '" ')
+            context = context.replace("``", '" ')
+
+            context_tokens = tokenize(context)
+
+            qas = article_paragraphs[pid]['qas']
+            for qid in range(len(qas)):
+                question = qas[qid]['question']
+                question_tokens = tokenize(question)
+                question_uuid = qas[qid]['id']
+
+                #context_ids = [str(vocab.get(w, qa_data.UNK_ID)) for w in context_tokens]
+                #qustion_ids = [str(vocab.get(w, qa_data.UNK_ID)) for w in question_tokens]
+                #print(context_ids)
+                for w in context_tokens:
+                    if not w in vocab:
+                        if not w in new_vocab:
+                            new_vocab[w] = 1
+                        else:
+                            new_vocab[w] += 1
+                        notfound +=1
+                    else:
+                        found += 1
+
+                for w in question_tokens:
+                    if not w in vocab:
+                        if not w in new_vocab:
+                            new_vocab[w] = 1
+                        else:
+                            new_vocab[w] += 1
+                        notfound +=1
+                    else:
+                        found +=1
+
+
+    print('found/not found: {}/{}, {}% not found'.format(found, notfound, 100 * notfound/float(found + notfound)))
+    print('New vocabulary:',len(new_vocab))
+
+    vocab_list = list(vocab.items())
+    vn = len(vocab_list)
+    for i in range((len(new_vocab))):
+        vocab_list.append((new_vocab.keys()[i], vn+i))
+
+    vocab = dict(vocab_list)
+    rev_vocab = dict([(x, y) for (y,x) in vocab_list])
+                #context_data.append(' '.join(context_ids))
+                #query_data.append(' '.join(qustion_ids))
+                #question_uuid_data.append(question_uuid)
+    #return context_data, question_data, question_uuid_data
+    _, dim = embd.shape
+    new_glove = np.random.randn(len(vocab), dim)
+    new_glove[:vn, :] = embd
+
+    found = 0
+    for i in range(vn, vn+(len(new_vocab))):
+        word = vocab_list[i][0]
+        if word in raw_glove_vocab:
+            found += 1
+            idx = raw_glove_vocab[word]
+            new_glove[i, :] = raw_glove[idx, :]
+        if word.capitalize() in raw_glove_vocab:
+            found += 1
+            idx = raw_glove_vocab[word.capitalize()]
+            new_glove[i, :] = raw_glove[idx, :]
+        if word.upper() in raw_glove_vocab:
+            found += 1
+            idx = raw_glove_vocab[word.upper()]
+            new_glove[i, :] = raw_glove[idx, :]
+    #from IPython import embed; embed()
+    print("{} unseen words found embeddings".format(found))
+
+    return vocab, rev_vocab, new_glove
+
 def strip(x):
     return map(int, x.strip().split(" "))
 
@@ -165,11 +259,11 @@ def generate_answers(sess, model, dataset, rev_vocab):
     answers = {}
 
     mydata, context_data, context_len_data, question_uuid_data = dataset
-    pred_s, pred_e = model.predict_on_batch(sess, mydata)
+    predicts = model.predict_on_batch(sess, mydata)
 
     for i, uuid in enumerate(question_uuid_data):
-        start = pred_s[i]
-        end = pred_e[i]
+        start, end = predicts[i]
+
         context_length = context_len_data[i]
         context = strip(context_data[i])
         end = min(end, context_length - 1)
@@ -189,12 +283,14 @@ def get_normalized_train_dir(train_dir):
     if the location of the checkpoint files has moved, allowing usage with CodaLab.
     This must be done on both train.py and qa_answer.py in order to work.
     """
-    global_train_dir = '/tmp/cs224n-squad-train'
-    if os.path.exists(global_train_dir):
-        os.unlink(global_train_dir)
-    if not os.path.exists(train_dir):
-        os.makedirs(train_dir)
-    os.symlink(os.path.abspath(train_dir), global_train_dir)
+    #global_train_dir = '/tmp/cs224n-squad-train'
+    #if os.path.exists(global_train_dir):
+    #    os.unlink(global_train_dir)
+    #if not os.path.exists(train_dir):
+    #    os.makedirs(train_dir)
+    #os.symlink(os.path.abspath(train_dir), global_train_dir)
+    global_train_dir = train_dir
+
     return global_train_dir
 
 
@@ -218,6 +314,20 @@ def main(_):
 
     dev_dirname = os.path.dirname(os.path.abspath(FLAGS.dev_path))
     dev_filename = os.path.basename(FLAGS.dev_path)
+
+    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
+    embeddings = load_glove_embeddings(embed_path)
+
+
+    raw_embed_path = pjoin("data", "squad", "glove.untrimmed.{}.npz".format(FLAGS.embedding_size))
+    raw_glove_data = np.load(raw_embed_path)
+    raw_glove = raw_glove_data['glove']
+    raw_glove_vocab = raw_glove_data['glove_vocab_dict'][()]
+
+
+    # expand vocab
+    vocab, rev_vocab, embeddings = expand_vocab(dev_dirname, dev_filename, vocab, embeddings, raw_glove, raw_glove_vocab)
+
     context_data, question_data, question_uuid_data = prepare_dev(dev_dirname, dev_filename, vocab)
     context_len_data = [len(context.split()) for context in context_data]
     mydata = preprocessing(context_data, question_data, FLAGS.context_maxlen, FLAGS.question_maxlen)
@@ -226,10 +336,9 @@ def main(_):
     # ========= Model-specific =========
     # You must change the following code to adjust to your model
 
-    embed_path = FLAGS.embed_path or pjoin("data", "squad", "glove.trimmed.{}.npz".format(FLAGS.embedding_size))
-    embeddings = load_glove_embeddings(embed_path)
     #encoder = Encoder(vocab_dim=FLAGS.embedding_size, state_size = FLAGS.encoder_state_size)
     #decoder = Decoder(output_size=FLAGS.output_size, hidden_size = FLAGS.decoder_hidden_size, state_size = FLAGS.decoder_state_size)
+
 
     qa = QASystem(embeddings, FLAGS)
 

@@ -29,7 +29,7 @@ def setup_args():
     #home = os.path.join(os.path.dirname(os.path.realpath(__file__)))
     home = os.getcwd()
     vocab_dir = os.path.join(home, "data", "squad")
-    glove_dir = os.path.join(home, "data", "dwr")
+    glove_dir = os.path.join(home, "download", "dwr")
     source_dir = os.path.join(home, "data", "squad")
     parser.add_argument("--source_dir", default=source_dir)
     parser.add_argument("--glove_dir", default=glove_dir)
@@ -64,6 +64,7 @@ def process_glove(args, vocab_list, save_path, size=4e5, random_init=True):
     :param vocab_list: [vocab]
     :return:
     """
+
     if not gfile.Exists(save_path + ".npz"):
         glove_path = os.path.join(args.glove_dir, "glove.6B.{}d.txt".format(args.glove_dim))
         if random_init:
@@ -71,21 +72,25 @@ def process_glove(args, vocab_list, save_path, size=4e5, random_init=True):
         else:
             glove = np.zeros((len(vocab_list), args.glove_dim))
         found = 0
+
+        vocab_dict = dict(zip(vocab_list, range(len(vocab_list))))
+
+
         with open(glove_path, 'r') as fh:
             for line in tqdm(fh, total=size):
                 array = line.lstrip().rstrip().split(" ")
                 word = array[0]
                 vector = list(map(float, array[1:]))
-                if word in vocab_list:
-                    idx = vocab_list.index(word)
+                if word in vocab_dict:
+                    idx = vocab_dict[word]
                     glove[idx, :] = vector
                     found += 1
-                if word.capitalize() in vocab_list:
-                    idx = vocab_list.index(word.capitalize())
+                if word.capitalize() in vocab_dict:
+                    idx = vocab_dict[word.capitalize()]
                     glove[idx, :] = vector
                     found += 1
-                if word.upper() in vocab_list:
-                    idx = vocab_list.index(word.upper())
+                if word.upper() in vocab_dict:
+                    idx = vocab_dict[word.upper()]
                     glove[idx, :] = vector
                     found += 1
 
@@ -155,7 +160,8 @@ if __name__ == '__main__':
                        pjoin(args.source_dir, "train.question"),
                        pjoin(args.source_dir, "val.context"),
                        pjoin(args.source_dir, "val.question"),
-                       pjoin(args.source_dir, "dev-v1.1.json")])
+                       #pjoin(args.source_dir, "dev-v1.1.json")
+                       ])
     vocab, rev_vocab = initialize_vocabulary(pjoin(args.vocab_dir, "vocab.dat"))
 
     # ======== Trim Distributed Word Representation =======
